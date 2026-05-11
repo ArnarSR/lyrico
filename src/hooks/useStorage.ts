@@ -83,6 +83,8 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     .filter((c) => c.song_id === songRow.id)
     .sort((a, b) => a.line_index - b.line_index)
     .map(rowToCard)
+    .filter((c) => !isSectionLabel(c.text))
+    .map((c, i) => ({ ...c, lineIndex: i }))
   return {
     id: songRow.id,
     title: songRow.title,

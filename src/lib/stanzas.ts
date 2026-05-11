@@ -1,5 +1,5 @@
 // Matches section headers like "Verse 1", "Chorus", "Bridge 2", "Pre-chorus", etc.
-const SECTION_LABEL_RE = /^(verse|chorus|refrain|bridge|pre-?chorus|outro|intro|hook|coda|interlude|tag)[\s\d]*$/i
+const SECTION_LABEL_RE = /^(vers(e)?|chorus|refrain|refreng|bridge|pre-?chorus|outro|intro|hook|coda|interlude|tag|strofe)[\s\d]*$/i
 
 /** Returns true for lines that are section labels, not lyric content. */
 export function isSectionLabel(line: string): boolean {
