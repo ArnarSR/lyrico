@@ -40,10 +40,17 @@ export function StudySession({
       .sort((a, b) => a.nextDue - b.nextDue)
   })
 
+  // Overrides the schedule — user chose to practice even though nothing is due.
+  const [overrideAll, setOverrideAll] = useState(false)
+  const effectiveSession = useMemo(
+    () => overrideAll ? [...activeCards].sort((a, b) => a.nextDue - b.nextDue) : sessionCards,
+    [overrideAll, activeCards, sessionCards],
+  )
+
   const current = useMemo(() => {
     // Look up live card state (updated by onCardReviewed) but only for session cards.
     const liveById = new Map(activeCards.map((c) => [c.id, c]))
-    const pending = sessionCards
+    const pending = effectiveSession
       .filter((sc) => !sessionDone.has(sc.id) && !repeatQueue.some((e) => e.id === sc.id))
       .map((sc) => liveById.get(sc.id) ?? sc)
     if (pending.length > 0) return pending[0]
@@ -51,7 +58,7 @@ export function StudySession({
       return activeCards.find((c) => c.id === repeatQueue[0].id) ?? null
     }
     return null
-  }, [activeCards, sessionCards, repeatQueue, sessionDone])
+  }, [activeCards, effectiveSession, repeatQueue, sessionDone])
 
   // Inline mode: blanks rendered as inputs inside the prompt text (difficulty 0 or 1).
   // Full-recall mode: single textarea, user types the whole line (difficulty 2).
@@ -136,8 +143,15 @@ export function StudySession({
             <p className="text-text-dim">Next review: {nextDueLabel}</p>
             <button
               type="button"
+              onClick={() => setOverrideAll(true)}
+              className="mt-4 rounded-full border border-accent bg-accent px-6 py-3 text-bg hover:brightness-110"
+            >
+              Practice anyway
+            </button>
+            <button
+              type="button"
               onClick={onExit}
-              className="mt-4 rounded-full border border-accent bg-accent/15 px-6 py-3 text-accent hover:bg-accent/25"
+              className="rounded-full border border-border px-6 py-2.5 text-sm text-text-dim hover:text-text"
             >
               Back to library
             </button>
