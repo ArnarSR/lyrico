@@ -21,13 +21,15 @@ export function SongStats({ song, onBack, onStudy, onStudyVerse, onStanzaDrill, 
 
   const stanzaStarts = getStanzaStarts(song.lyrics)
   const verses = stanzaStarts.length > 1
-    ? stanzaStarts.map((start, i) => {
-        const end = i + 1 < stanzaStarts.length ? stanzaStarts[i + 1] - 1 : Infinity
-        const cards = song.cards.filter((c) => c.lineIndex >= start && c.lineIndex <= end)
-        const masteredCount = cards.filter(isMastered).length
-        const firstLine = cards[0]?.text ?? ''
-        return { cards, masteredCount, firstLine }
-      })
+    ? stanzaStarts
+        .map((start, i) => {
+          const end = i + 1 < stanzaStarts.length ? stanzaStarts[i + 1] - 1 : Infinity
+          const cards = song.cards.filter((c) => c.lineIndex >= start && c.lineIndex <= end)
+          const masteredCount = cards.filter(isMastered).length
+          const firstLine = cards[0]?.text ?? ''
+          return { cards, masteredCount, firstLine, stanzaIdx: i }
+        })
+        .filter((v) => v.cards.length > 0)
     : []
   const concertDays = song.concertDate
     ? Math.ceil((song.concertDate - now) / DAY_MS)
@@ -112,7 +114,7 @@ export function SongStats({ song, onBack, onStudy, onStudyVerse, onStanzaDrill, 
           <h2 className="mb-2 text-xs uppercase tracking-[0.15em] text-text-dim">Verses</h2>
           <ol className="flex flex-col gap-2">
             {verses.map((verse, i) => (
-              <li key={i}>
+              <li key={verse.stanzaIdx}>
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-bg-soft px-4 py-3">
                   <div className="min-w-0">
                     <p className="text-xs text-text-dim">
@@ -122,7 +124,7 @@ export function SongStats({ song, onBack, onStudy, onStudyVerse, onStanzaDrill, 
                   </div>
                   <button
                     type="button"
-                    onClick={() => onStudyVerse(i)}
+                    onClick={() => onStudyVerse(verse.stanzaIdx)}
                     className="shrink-0 rounded-full border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent hover:bg-accent/20"
                   >
                     Study
