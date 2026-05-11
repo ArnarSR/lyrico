@@ -20,7 +20,7 @@ interface SongLibraryProps {
   onSignOut: () => void
   onCloneSong: (song: Song) => void
   onOpenGroup: (group: Group) => void
-  onCreateGroup: (name: string, description?: string) => Promise<void>
+  onCreateGroup: (name: string, description?: string) => Promise<unknown>
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
   onAddToPracticeList: (song: Song, listId: string) => void
 }

@@ -5,7 +5,7 @@ interface GroupsTabProps {
   groups: Group[]
   loading: boolean
   onOpenGroup: (group: Group) => void
-  onCreateGroup: (name: string, description?: string) => Promise<void>
+  onCreateGroup: (name: string, description?: string) => Promise<unknown>
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
 }
 
