@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #0e0c0a;
+  --color-bg-soft: #1a1612;
+  --color-bg-card: #19150f;
+  --color-border: #2a2319;
+  --color-accent: #c8a96e;
+  --color-accent-soft: #8a7550;
+  --color-text: #e8e0d0;
+  --color-text-dim: #9a8f7a;
+  --color-correct: #7fdc9e;
+  --color-wrong: #f07070;
+
+  --font-serif:
+    Georgia, 'Times New Roman', 'Iowan Old Style', 'Palatino Linotype', serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100svh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  color: inherit;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+}
+
+@keyframes lyrico-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+/* Fine-tune input caret and selection to match amber accent */
+::selection {
+  background: rgba(200, 169, 110, 0.35);
+  color: var(--color-text);
+}
