@@ -39,7 +39,11 @@ export default function App() {
 }
 
 function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
-  const { songs, publicSongs, loading: songsLoading, addSong, cloneSong, updateCard, deleteSong, getSong } = useStorage(userId)
+  const {
+    songs, publicSongs, userLists, listSongIds, loading: songsLoading,
+    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong,
+    createUserList, addSongToUserList, removeSongFromUserList,
+  } = useStorage(userId)
   const {
     myGroups, allPracticeLists, loading: groupsLoading,
     createGroup, joinGroup, leaveGroup,
@@ -50,7 +54,6 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
 
   const mySongIds = new Set(songs.map((s) => s.id))
 
-  // Navigate back to library if the song being viewed was deleted.
   useEffect(() => {
     if (songsLoading) return
     if ('songId' in view && !getSong(view.songId)) {
@@ -58,7 +61,6 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     }
   }, [songsLoading, view, getSong])
 
-  // Stable callback so GroupDetail's useEffect doesn't loop.
   const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
 
   if (songsLoading) {
@@ -118,6 +120,9 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     return (
       <SongStats
         song={song}
+        allPracticeLists={allPracticeLists}
+        userLists={userLists}
+        listSongIds={listSongIds}
         onBack={() => setView({ name: 'library' })}
         onStudy={() => setView({ name: 'study', songId: song.id })}
         onStudyVerse={(stanzaIdx) => setView({ name: 'study', songId: song.id, stanzaIdx })}
@@ -126,6 +131,11 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
           deleteSong(song.id)
           setView({ name: 'library' })
         }}
+        onTogglePublic={() => updateSong(song.id, { isPublic: !song.isPublic })}
+        onAddToPracticeList={(listId) => addSongToPracticeList(listId, song.id)}
+        onAddToUserList={(listId) => addSongToUserList(listId, song.id)}
+        onRemoveFromUserList={(listId) => removeSongFromUserList(listId, song.id)}
+        onCreateUserList={createUserList}
       />
     )
   }
@@ -169,6 +179,8 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       groups={myGroups}
       groupsLoading={groupsLoading}
       allPracticeLists={allPracticeLists}
+      userLists={userLists}
+      listSongIds={listSongIds}
       onOpen={(id) => setView({ name: 'stats', songId: id })}
       onStudy={(id) => setView({ name: 'study', songId: id })}
       onAdd={() => setView({ name: 'add' })}

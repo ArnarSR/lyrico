@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Group, PracticeList, Song } from '../types'
+import type { Group, PracticeList, Song, UserList } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
@@ -14,6 +14,8 @@ interface SongLibraryProps {
   groups: Group[]
   groupsLoading: boolean
   allPracticeLists: PracticeList[]
+  userLists: UserList[]
+  listSongIds: Map<string, Set<string>>
   onOpen: (songId: string) => void
   onStudy: (songId: string) => void
   onAdd: () => void
@@ -44,14 +46,20 @@ function formatRelative(now: number, ts?: number): string {
 }
 
 export function SongLibrary({
-  songs, publicSongs, groups, groupsLoading, allPracticeLists,
+  songs, publicSongs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
   onOpen, onStudy, onAdd, onSignOut, onCloneSong,
   onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList,
 }: SongLibraryProps) {
   const now = useNow()
   const [tab, setTab] = useState<Tab>('mine')
+  const [selectedList, setSelectedList] = useState<string | null>(null)
 
   const mySongIds = new Set(songs.map((s) => s.id))
+
+  // Filter songs when a list is selected
+  const visibleSongs = selectedList
+    ? songs.filter((s) => listSongIds.get(selectedList)?.has(s.id))
+    : songs
 
   return (
     <Shell>
@@ -87,17 +95,49 @@ export function SongLibrary({
       </div>
 
       {tab === 'mine' && (
-        songs.length === 0 ? (
-          <EmptyState onAdd={onAdd} />
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {songs.map((song) => (
-              <li key={song.id}>
-                <SongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} />
-              </li>
-            ))}
-          </ul>
-        )
+        <>
+          {/* List filter strip */}
+          {userLists.length > 0 && (
+            <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => setSelectedList(null)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition-colors ${!selectedList ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-dim hover:text-text'}`}
+              >
+                All
+              </button>
+              {userLists.map((list) => (
+                <button
+                  key={list.id}
+                  type="button"
+                  onClick={() => setSelectedList(selectedList === list.id ? null : list.id)}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedList === list.id ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-dim hover:text-text'}`}
+                >
+                  {list.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {visibleSongs.length === 0 ? (
+            selectedList ? (
+              <div className="mt-6 rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
+                <p className="text-text">No songs in this list</p>
+                <p className="mt-2 text-sm text-text-dim">Open a song and add it to this list from the details page.</p>
+              </div>
+            ) : (
+              <EmptyState onAdd={onAdd} />
+            )
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {visibleSongs.map((song) => (
+                <li key={song.id}>
+                  <SongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       {tab === 'community' && (

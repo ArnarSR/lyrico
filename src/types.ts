@@ -85,3 +85,10 @@ export interface PracticeList {
   createdBy: string
   createdAt: number
 }
+
+export interface UserList {
+  id: string
+  userId: string
+  name: string
+  createdAt: number
+}

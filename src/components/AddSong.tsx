@@ -19,6 +19,9 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   const [audioUrl, setAudioUrl] = useState<string | undefined>()
   const [audioName, setAudioName] = useState<string | undefined>()
   const [isPublic, setIsPublic] = useState(false)
+  const [importUrl, setImportUrl] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const lineCount = lyrics
     .split('\n')
@@ -30,11 +33,28 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   function onAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    // Revoke any previously-created URL to avoid leaks on repeated picks.
     if (audioUrl) URL.revokeObjectURL(audioUrl)
     const url = URL.createObjectURL(file)
     setAudioUrl(url)
     setAudioName(file.name)
+  }
+
+  async function handleImport() {
+    if (!importUrl.trim()) return
+    setImporting(true)
+    setImportError(null)
+    try {
+      const res = await fetch(`/api/fetch-lyrics?url=${encodeURIComponent(importUrl.trim())}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const { lyrics: text, error } = await res.json() as { lyrics?: string; error?: string }
+      if (error || !text) throw new Error(error ?? 'No text returned')
+      setLyrics(text)
+      setImportUrl('')
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed')
+    } finally {
+      setImporting(false)
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -58,11 +78,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
         title="New song"
         subtitle={lineCount > 0 ? `${lineCount} lines` : 'Paste lyrics below'}
         right={
-          <button
-            type="button"
-            onClick={onCancel}
-            className="text-sm text-text-dim hover:text-text"
-          >
+          <button type="button" onClick={onCancel} className="text-sm text-text-dim hover:text-text">
             Cancel
           </button>
         }
@@ -98,17 +114,31 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
           >
             <option value="">—</option>
             {VOICE_PARTS.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
+              <option key={v} value={v}>{v}</option>
             ))}
           </select>
         </Field>
 
-        <Field
-          label="Lyrics"
-          hint="One line per row — each line becomes its own flashcard."
-        >
+        <Field label="Lyrics" hint="One line per row — each line becomes its own flashcard.">
+          {/* URL import row */}
+          <div className="mb-2 flex gap-2">
+            <input
+              type="url"
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+              placeholder="Import from URL…"
+              className={`${inputCx} flex-1 text-sm`}
+            />
+            <button
+              type="button"
+              disabled={!importUrl.trim() || importing}
+              onClick={handleImport}
+              className="shrink-0 rounded-xl border border-accent bg-accent/15 px-3 py-2 text-sm text-accent hover:bg-accent/25 disabled:opacity-40"
+            >
+              {importing ? '…' : 'Import'}
+            </button>
+          </div>
+          {importError && <p className="mb-1 text-xs text-wrong">{importError}</p>}
           <textarea
             value={lyrics}
             onChange={(e) => setLyrics(e.target.value)}
@@ -120,16 +150,9 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
 
         <Field label="Audio (optional)">
           <label className="flex cursor-pointer items-center justify-between rounded-xl border border-border bg-bg-soft px-4 py-3 text-sm text-text-dim hover:border-accent-soft">
-            <span className="truncate">
-              {audioName ?? 'Pick an audio file'}
-            </span>
+            <span className="truncate">{audioName ?? 'Pick an audio file'}</span>
             <span className="shrink-0 text-accent">Browse</span>
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={onAudioChange}
-              className="hidden"
-            />
+            <input type="file" accept="audio/*" onChange={onAudioChange} className="hidden" />
           </label>
         </Field>
 
@@ -179,20 +202,10 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
 const inputCx =
   'w-full rounded-xl border border-border bg-bg-soft px-4 py-3 text-base text-text placeholder:text-text-dim/60 focus:border-accent'
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs uppercase tracking-[0.15em] text-text-dim">
-        {label}
-      </span>
+      <span className="text-xs uppercase tracking-[0.15em] text-text-dim">{label}</span>
       {children}
       {hint && <span className="text-xs text-text-dim/80">{hint}</span>}
     </label>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Card, Song } from '../types'
+import type { Card, Song, UserList } from '../types'
 import { uid } from '../lib/id'
 import { makeCard } from './useSM2'
 import { isSectionLabel } from '../lib/stanzas'
@@ -46,6 +46,19 @@ interface CardRow {
   difficulty: number
 }
 
+interface UserListRow {
+  id: string
+  user_id: string
+  name: string
+  created_at: number
+}
+
+interface UserListSongRow {
+  list_id: string
+  song_id: string
+  added_at: number
+}
+
 // ── Mapping helpers ───────────────────────────────────────────────────────────
 
 function rowToCard(row: CardRow): Card {
@@ -88,7 +101,6 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     .filter((c) => !isSectionLabel(c.text))
     .map((c, i) => ({ ...c, lineIndex: i }))
 
-  // Approximate lastStudied from card SM-2 state: nextDue - interval*day
   const lastStudied = cards.reduce<number | undefined>((max, c) => {
     if (c.lastQuality === null) return max
     const studied = c.nextDue - c.interval * DAY_MS
@@ -117,18 +129,22 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
 export function useStorage(userId: string) {
   const [songs, setSongs] = useState<Song[]>([])
   const [publicSongs, setPublicSongs] = useState<Song[]>([])
+  const [userLists, setUserLists] = useState<UserList[]>([])
+  // listId -> Set of songIds in that list
+  const [listSongIds, setListSongIds] = useState<Map<string, Set<string>>>(new Map())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [songsRes, cardsRes, publicRes] = await Promise.all([
+      const [songsRes, cardsRes, publicRes, listsRes] = await Promise.all([
         supabase.from('songs').select('*').order('created_at', { ascending: false }),
         supabase.from('cards').select('*'),
         supabase.from('songs').select('id,user_id,title,composer,voice_part,lyrics,audio_url,audio_name,concert_date,created_at,is_public')
           .eq('is_public', true)
           .neq('user_id', userId)
           .order('created_at', { ascending: false }),
+        supabase.from('user_lists').select('*').eq('user_id', userId).order('created_at'),
       ])
       if (cancelled) return
       if (songsRes.error) { console.error(songsRes.error); setLoading(false); return }
@@ -138,6 +154,25 @@ export function useStorage(userId: string) {
       const ownSongs = songRows.filter((r) => r.user_id === userId)
       setSongs(ownSongs.map((sr) => buildSong(sr, cardRows)))
       setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
+
+      const lists = (listsRes.data ?? []) as UserListRow[]
+      setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at })))
+
+      if (lists.length > 0) {
+        const { data: lsRows } = await supabase
+          .from('user_list_songs')
+          .select('list_id,song_id')
+          .in('list_id', lists.map((l) => l.id))
+        if (!cancelled) {
+          const map = new Map<string, Set<string>>()
+          for (const r of (lsRows ?? []) as UserListSongRow[]) {
+            if (!map.has(r.list_id)) map.set(r.list_id, new Set())
+            map.get(r.list_id)!.add(r.song_id)
+          }
+          setListSongIds(map)
+        }
+      }
+
       setLoading(false)
     }
     load()
@@ -170,6 +205,7 @@ export function useStorage(userId: string) {
 
     const song: Song = buildSong(songRow, cardRows)
     setSongs((prev) => [song, ...prev])
+    if (input.isPublic) setPublicSongs((prev) => [song, ...prev])
 
     supabase.from('songs').insert(songRow).then(({ error }) => {
       if (error) console.error('addSong (songs):', error)
@@ -181,7 +217,6 @@ export function useStorage(userId: string) {
     return song
   }, [userId])
 
-  // Clone a community/practice-list song into the user's personal library.
   const cloneSong = useCallback((source: Song): Song => {
     return addSong({
       title: source.title,
@@ -192,6 +227,25 @@ export function useStorage(userId: string) {
       isPublic: false,
     })
   }, [addSong])
+
+  const updateSong = useCallback((songId: string, patch: { isPublic?: boolean }) => {
+    setSongs((prev) => prev.map((s) => s.id === songId ? { ...s, ...patch } : s))
+    if (patch.isPublic !== undefined) {
+      if (patch.isPublic) {
+        // add to publicSongs
+        setSongs((current) => {
+          const song = current.find((s) => s.id === songId)
+          if (song) setPublicSongs((prev) => [{ ...song, isPublic: true }, ...prev.filter((s) => s.id !== songId)])
+          return current
+        })
+      } else {
+        setPublicSongs((prev) => prev.filter((s) => s.id !== songId))
+      }
+    }
+    supabase.from('songs').update({ is_public: patch.isPublic }).eq('id', songId).then(({ error }) => {
+      if (error) console.error('updateSong:', error)
+    })
+  }, [])
 
   const updateCard = useCallback((songId: string, card: Card) => {
     const now = Date.now()
@@ -223,5 +277,50 @@ export function useStorage(userId: string) {
     [songs],
   )
 
-  return { songs, publicSongs, loading, addSong, cloneSong, updateCard, deleteSong, getSong }
+  // ── Personal lists ─────────────────────────────────────────────────────────
+
+  const createUserList = useCallback(async (name: string): Promise<UserList> => {
+    const row: UserListRow = { id: uid(), user_id: userId, name: name.trim(), created_at: Date.now() }
+    const { error } = await supabase.from('user_lists').insert(row)
+    if (error) { console.error('createUserList:', error); throw error }
+    const list: UserList = { id: row.id, userId, name: row.name, createdAt: row.created_at }
+    setUserLists((prev) => [...prev, list])
+    setListSongIds((prev) => new Map(prev).set(list.id, new Set()))
+    return list
+  }, [userId])
+
+  const deleteUserList = useCallback(async (listId: string) => {
+    setUserLists((prev) => prev.filter((l) => l.id !== listId))
+    setListSongIds((prev) => { const m = new Map(prev); m.delete(listId); return m })
+    await supabase.from('user_lists').delete().eq('id', listId)
+  }, [])
+
+  const addSongToUserList = useCallback(async (listId: string, songId: string) => {
+    setListSongIds((prev) => {
+      const m = new Map(prev)
+      const s = new Set(m.get(listId) ?? [])
+      s.add(songId)
+      m.set(listId, s)
+      return m
+    })
+    const { error } = await supabase.from('user_list_songs').insert({ list_id: listId, song_id: songId, added_at: Date.now() })
+    if (error && error.code !== '23505') console.error('addSongToUserList:', error)
+  }, [])
+
+  const removeSongFromUserList = useCallback(async (listId: string, songId: string) => {
+    setListSongIds((prev) => {
+      const m = new Map(prev)
+      const s = new Set(m.get(listId) ?? [])
+      s.delete(songId)
+      m.set(listId, s)
+      return m
+    })
+    await supabase.from('user_list_songs').delete().eq('list_id', listId).eq('song_id', songId)
+  }, [])
+
+  return {
+    songs, publicSongs, userLists, listSongIds, loading,
+    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong,
+    createUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
+  }
 }
