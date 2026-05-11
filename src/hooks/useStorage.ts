@@ -1,30 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Card, Song } from '../types'
 import { uid } from '../lib/id'
 import { makeCard } from './useSM2'
 import { isSectionLabel } from '../lib/stanzas'
-
-const STORAGE_KEY = 'lyrica_songs'
-
-function readFromStorage(): Song[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed as Song[]
-  } catch {
-    return []
-  }
-}
-
-function writeToStorage(songs: Song[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(songs))
-  } catch {
-    // Quota exceeded or private mode — silently ignore; UI still works in-memory.
-  }
-}
+import { supabase } from '../lib/supabase'
 
 export interface NewSongInput {
   title: string
@@ -36,30 +15,113 @@ export interface NewSongInput {
   concertDate?: number
 }
 
-export function useStorage() {
-  const [songs, setSongs] = useState<Song[]>(() => readFromStorage())
-  const skipWriteRef = useRef(true)
+// ── DB row shapes ─────────────────────────────────────────────────────────────
 
-  // Persist on every change, but skip the very first effect run
-  // (we already loaded from storage above).
-  useEffect(() => {
-    if (skipWriteRef.current) {
-      skipWriteRef.current = false
-      return
-    }
-    writeToStorage(songs)
-  }, [songs])
+interface SongRow {
+  id: string
+  user_id: string
+  title: string
+  composer: string | null
+  voice_part: string | null
+  lyrics: string
+  audio_url: string | null
+  audio_name: string | null
+  concert_date: number | null
+  created_at: number
+}
 
-  // Keep multiple tabs / PWA windows in sync.
+interface CardRow {
+  id: string
+  song_id: string
+  user_id: string
+  line_index: number
+  text: string
+  interval_days: number
+  repetitions: number
+  ease_factor: number
+  next_due: number
+  last_quality: number | null
+  difficulty: number
+}
+
+// ── Mapping helpers ───────────────────────────────────────────────────────────
+
+function rowToCard(row: CardRow): Card {
+  return {
+    id: row.id,
+    lineIndex: row.line_index,
+    text: row.text,
+    interval: row.interval_days,
+    repetitions: row.repetitions,
+    easeFactor: row.ease_factor,
+    nextDue: row.next_due,
+    lastQuality: row.last_quality,
+    difficulty: row.difficulty as Card['difficulty'],
+  }
+}
+
+function cardToRow(card: Card, songId: string, userId: string): CardRow {
+  return {
+    id: card.id,
+    song_id: songId,
+    user_id: userId,
+    line_index: card.lineIndex,
+    text: card.text,
+    interval_days: card.interval,
+    repetitions: card.repetitions,
+    ease_factor: card.easeFactor,
+    next_due: card.nextDue,
+    last_quality: card.lastQuality,
+    difficulty: card.difficulty,
+  }
+}
+
+function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
+  const cards = cardRows
+    .filter((c) => c.song_id === songRow.id)
+    .sort((a, b) => a.line_index - b.line_index)
+    .map(rowToCard)
+  return {
+    id: songRow.id,
+    title: songRow.title,
+    composer: songRow.composer ?? undefined,
+    voicePart: (songRow.voice_part as Song['voicePart']) ?? undefined,
+    lyrics: songRow.lyrics,
+    audioUrl: songRow.audio_url ?? undefined,
+    audioName: songRow.audio_name ?? undefined,
+    concertDate: songRow.concert_date ?? undefined,
+    cards,
+    createdAt: songRow.created_at,
+  }
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
+
+export function useStorage(userId: string) {
+  const [songs, setSongs] = useState<Song[]>([])
+  const [loading, setLoading] = useState(true)
+
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        setSongs(readFromStorage())
+    let cancelled = false
+    async function load() {
+      const [songsRes, cardsRes] = await Promise.all([
+        supabase.from('songs').select('*').order('created_at', { ascending: false }),
+        supabase.from('cards').select('*'),
+      ])
+      if (cancelled) return
+      if (songsRes.error || cardsRes.error) {
+        console.error(songsRes.error ?? cardsRes.error)
+        setLoading(false)
+        return
       }
+      const songRows = songsRes.data as SongRow[]
+      const cardRows = cardsRes.data as CardRow[]
+      setSongs(songRows.map((sr) => buildSong(sr, cardRows)))
+      setLoading(false)
     }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+    load()
+    return () => { cancelled = true }
+  }, [userId])
 
   const addSong = useCallback((input: NewSongInput): Song => {
     const now = Date.now()
@@ -68,60 +130,61 @@ export function useStorage() {
       .map((l) => l.trim())
       .filter((l) => l.length > 0 && !isSectionLabel(l))
     const cards: Card[] = lines.map((text, i) => makeCard(uid(), i, text, now))
-    const song: Song = {
-      id: uid(),
+    const songId = uid()
+
+    const songRow: SongRow = {
+      id: songId,
+      user_id: userId,
       title: input.title.trim(),
-      composer: input.composer?.trim() || undefined,
-      voicePart: input.voicePart,
+      composer: input.composer?.trim() || null,
+      voice_part: input.voicePart ?? null,
       lyrics: input.lyrics,
-      audioUrl: input.audioUrl,
-      audioName: input.audioName,
-      concertDate: input.concertDate,
-      cards,
-      createdAt: now,
+      audio_url: input.audioUrl ?? null,
+      audio_name: input.audioName ?? null,
+      concert_date: input.concertDate ?? null,
+      created_at: now,
     }
+    const cardRows = cards.map((c) => cardToRow(c, songId, userId))
+
+    // Optimistic local update, then persist in background.
+    const song: Song = buildSong(songRow, cardRows)
     setSongs((prev) => [song, ...prev])
+
+    supabase.from('songs').insert(songRow).then(({ error }) => {
+      if (error) console.error('addSong (songs):', error)
+    })
+    supabase.from('cards').insert(cardRows).then(({ error }) => {
+      if (error) console.error('addSong (cards):', error)
+    })
+
     return song
-  }, [])
+  }, [userId])
 
-  const updateSong = useCallback(
-    (id: string, updater: (s: Song) => Song) => {
-      setSongs((prev) => prev.map((s) => (s.id === id ? updater(s) : s)))
-    },
-    [],
-  )
+  const updateCard = useCallback((songId: string, card: Card) => {
+    // Optimistic local update.
+    setSongs((prev) =>
+      prev.map((s) =>
+        s.id === songId
+          ? { ...s, cards: s.cards.map((c) => (c.id === card.id ? card : c)) }
+          : s,
+      ),
+    )
+    supabase.from('cards').upsert(cardToRow(card, songId, userId)).then(({ error }) => {
+      if (error) console.error('updateCard:', error)
+    })
+  }, [userId])
 
-  const deleteSong = useCallback((id: string) => {
-    setSongs((prev) => prev.filter((s) => s.id !== id))
+  const deleteSong = useCallback((songId: string) => {
+    setSongs((prev) => prev.filter((s) => s.id !== songId))
+    supabase.from('songs').delete().eq('id', songId).then(({ error }) => {
+      if (error) console.error('deleteSong:', error)
+    })
   }, [])
 
   const getSong = useCallback(
-    (id: string) => songs.find((s) => s.id === id) ?? null,
+    (songId: string) => songs.find((s) => s.id === songId) ?? null,
     [songs],
   )
 
-  const updateCard = useCallback(
-    (songId: string, card: Card) => {
-      setSongs((prev) =>
-        prev.map((s) => {
-          if (s.id !== songId) return s
-          return {
-            ...s,
-            lastStudied: Date.now(),
-            cards: s.cards.map((c) => (c.id === card.id ? card : c)),
-          }
-        }),
-      )
-    },
-    [],
-  )
-
-  return {
-    songs,
-    addSong,
-    updateSong,
-    updateCard,
-    deleteSong,
-    getSong,
-  }
+  return { songs, loading, addSong, updateCard, deleteSong, getSong }
 }

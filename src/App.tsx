@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
+import { Auth } from './components/Auth'
 import { SongLibrary } from './components/SongLibrary'
 import { AddSong } from './components/AddSong'
 import { StudySession } from './components/StudySession'
@@ -15,7 +17,23 @@ type View =
   | { name: 'stanza'; songId: string }
 
 export default function App() {
-  const { songs, addSong, updateCard, deleteSong, getSong } = useStorage()
+  const { user, loading: authLoading, signOut } = useAuth()
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-text-dim">Loading…</p>
+      </div>
+    )
+  }
+
+  if (!user) return <Auth />
+
+  return <AppInner userId={user.id} onSignOut={signOut} />
+}
+
+function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
+  const { songs, addSong, updateCard, deleteSong, getSong } = useStorage(userId)
   const [view, setView] = useState<View>({ name: 'library' })
 
   if (view.name === 'add') {
@@ -24,7 +42,6 @@ export default function App() {
         onCancel={() => setView({ name: 'library' })}
         onSave={(input) => {
           const song = addSong(input)
-          // Jump straight into studying a freshly-added song so you feel the loop.
           setView({ name: 'study', songId: song.id })
         }}
       />
@@ -33,14 +50,7 @@ export default function App() {
 
   if (view.name === 'stanza') {
     const song = getSong(view.songId)
-    if (!song) return (
-      <SongLibrary
-        songs={songs}
-        onOpen={(id) => setView({ name: 'stats', songId: id })}
-        onStudy={(id) => setView({ name: 'study', songId: id })}
-        onAdd={() => setView({ name: 'add' })}
-      />
-    )
+    if (!song) return <Library songs={songs} setView={setView} onSignOut={onSignOut} />
     return (
       <StanzaSession
         song={song}
@@ -51,16 +61,7 @@ export default function App() {
 
   if (view.name === 'study') {
     const song = getSong(view.songId)
-    if (!song) {
-      return (
-        <SongLibrary
-          songs={songs}
-          onOpen={(id) => setView({ name: 'stats', songId: id })}
-          onStudy={(id) => setView({ name: 'study', songId: id })}
-          onAdd={() => setView({ name: 'add' })}
-        />
-      )
-    }
+    if (!song) return <Library songs={songs} setView={setView} onSignOut={onSignOut} />
     const activeCards =
       view.stanzaIdx !== undefined
         ? (() => {
@@ -80,16 +81,7 @@ export default function App() {
 
   if (view.name === 'stats') {
     const song = getSong(view.songId)
-    if (!song) {
-      return (
-        <SongLibrary
-          songs={songs}
-          onOpen={(id) => setView({ name: 'stats', songId: id })}
-          onStudy={(id) => setView({ name: 'study', songId: id })}
-          onAdd={() => setView({ name: 'add' })}
-        />
-      )
-    }
+    if (!song) return <Library songs={songs} setView={setView} onSignOut={onSignOut} />
     return (
       <SongStats
         song={song}
@@ -105,12 +97,25 @@ export default function App() {
     )
   }
 
+  return <Library songs={songs} setView={setView} onSignOut={onSignOut} />
+}
+
+function Library({
+  songs,
+  setView,
+  onSignOut,
+}: {
+  songs: ReturnType<typeof useStorage>['songs']
+  setView: (v: View) => void
+  onSignOut: () => void
+}) {
   return (
     <SongLibrary
       songs={songs}
       onOpen={(id) => setView({ name: 'stats', songId: id })}
       onStudy={(id) => setView({ name: 'study', songId: id })}
       onAdd={() => setView({ name: 'add' })}
+      onSignOut={onSignOut}
     />
   )
 }

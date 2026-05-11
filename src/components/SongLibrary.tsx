@@ -8,6 +8,7 @@ interface SongLibraryProps {
   onOpen: (songId: string) => void
   onStudy: (songId: string) => void
   onAdd: () => void
+  onSignOut: () => void
 }
 
 const DAY_MS = 86_400_000
@@ -33,6 +34,7 @@ export function SongLibrary({
   onOpen,
   onStudy,
   onAdd,
+  onSignOut,
 }: SongLibraryProps) {
   const now = useNow()
   return (
@@ -41,9 +43,14 @@ export function SongLibrary({
         title="Lyrica"
         subtitle="Learn your lyrics by heart"
         right={
-          <IconButton label="Add song" onClick={onAdd}>
-            <PlusIcon />
-          </IconButton>
+          <div className="flex items-center gap-1">
+            <IconButton label="Add song" onClick={onAdd}>
+              <PlusIcon />
+            </IconButton>
+            <IconButton label="Sign out" onClick={onSignOut}>
+              <SignOutIcon />
+            </IconButton>
+          </div>
         }
       />
 
@@ -171,6 +178,25 @@ function PlusIcon() {
       strokeLinecap="round"
     >
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+function SignOutIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
     </svg>
   )
 }
