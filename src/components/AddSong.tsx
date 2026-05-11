@@ -18,6 +18,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   const [concertDate, setConcertDate] = useState('')
   const [audioUrl, setAudioUrl] = useState<string | undefined>()
   const [audioName, setAudioName] = useState<string | undefined>()
+  const [isPublic, setIsPublic] = useState(false)
 
   const lineCount = lyrics
     .split('\n')
@@ -47,6 +48,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
       audioUrl,
       audioName,
       concertDate: concertDate ? new Date(concertDate).getTime() : undefined,
+      isPublic,
     })
   }
 
@@ -139,6 +141,19 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
             className={inputCx}
           />
         </Field>
+
+        <label className="flex cursor-pointer items-center justify-between rounded-xl border border-border bg-bg-soft px-4 py-3">
+          <div>
+            <p className="text-sm text-text">Share with community</p>
+            <p className="text-xs text-text-dim">Others can find and add this song to their library</p>
+          </div>
+          <div
+            onClick={() => setIsPublic((v) => !v)}
+            className={`relative h-6 w-11 rounded-full transition-colors ${isPublic ? 'bg-accent' : 'bg-border'}`}
+          >
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </div>
+        </label>
 
         <div className="mt-2 flex gap-3">
           <button

@@ -1,0 +1,52 @@
+import { useCallback, useEffect, useState } from 'react'
+import type { Profile } from '../types'
+import { supabase } from '../lib/supabase'
+
+interface ProfileRow {
+  user_id: string
+  display_name: string
+  created_at: number
+}
+
+function rowToProfile(row: ProfileRow): Profile {
+  return { userId: row.user_id, displayName: row.display_name, createdAt: row.created_at }
+}
+
+export function useProfile(userId: string) {
+  const [profile, setProfile] = useState<Profile | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setProfile(rowToProfile(data as ProfileRow))
+      })
+  }, [userId])
+
+  const createProfile = useCallback(async (displayName: string): Promise<Profile> => {
+    const now = Date.now()
+    const row: ProfileRow = { user_id: userId, display_name: displayName.trim(), created_at: now }
+    await supabase.from('profiles').upsert(row)
+    const p = rowToProfile(row)
+    setProfile(p)
+    return p
+  }, [userId])
+
+  return { profile, createProfile }
+}
+
+export async function fetchProfiles(userIds: string[]): Promise<Map<string, string>> {
+  if (userIds.length === 0) return new Map()
+  const { data } = await supabase
+    .from('profiles')
+    .select('user_id, display_name')
+    .in('user_id', userIds)
+  const map = new Map<string, string>()
+  for (const row of data ?? []) {
+    map.set(row.user_id as string, row.display_name as string)
+  }
+  return map
+}

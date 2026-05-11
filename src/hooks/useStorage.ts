@@ -13,6 +13,7 @@ export interface NewSongInput {
   audioUrl?: string
   audioName?: string
   concertDate?: number
+  isPublic?: boolean
 }
 
 // ── DB row shapes ─────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ interface SongRow {
   audio_name: string | null
   concert_date: number | null
   created_at: number
+  is_public: boolean
 }
 
 interface CardRow {
@@ -92,6 +94,8 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     concertDate: songRow.concert_date ?? undefined,
     cards,
     createdAt: songRow.created_at,
+    isPublic: songRow.is_public,
+    ownerId: songRow.user_id,
   }
 }
 
@@ -99,24 +103,28 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
 
 export function useStorage(userId: string) {
   const [songs, setSongs] = useState<Song[]>([])
+  const [publicSongs, setPublicSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [songsRes, cardsRes] = await Promise.all([
+      const [songsRes, cardsRes, publicRes] = await Promise.all([
         supabase.from('songs').select('*').order('created_at', { ascending: false }),
         supabase.from('cards').select('*'),
+        supabase.from('songs').select('id,user_id,title,composer,voice_part,lyrics,audio_url,audio_name,concert_date,created_at,is_public')
+          .eq('is_public', true)
+          .neq('user_id', userId)
+          .order('created_at', { ascending: false }),
       ])
       if (cancelled) return
-      if (songsRes.error || cardsRes.error) {
-        console.error(songsRes.error ?? cardsRes.error)
-        setLoading(false)
-        return
-      }
+      if (songsRes.error) { console.error(songsRes.error); setLoading(false); return }
+
       const songRows = songsRes.data as SongRow[]
       const cardRows = cardsRes.data as CardRow[]
-      setSongs(songRows.map((sr) => buildSong(sr, cardRows)))
+      const ownSongs = songRows.filter((r) => r.user_id === userId)
+      setSongs(ownSongs.map((sr) => buildSong(sr, cardRows)))
+      setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
       setLoading(false)
     }
     load()
@@ -143,10 +151,10 @@ export function useStorage(userId: string) {
       audio_name: input.audioName ?? null,
       concert_date: input.concertDate ?? null,
       created_at: now,
+      is_public: input.isPublic ?? false,
     }
     const cardRows = cards.map((c) => cardToRow(c, songId, userId))
 
-    // Optimistic local update, then persist in background.
     const song: Song = buildSong(songRow, cardRows)
     setSongs((prev) => [song, ...prev])
 
@@ -160,8 +168,19 @@ export function useStorage(userId: string) {
     return song
   }, [userId])
 
+  // Clone a community/practice-list song into the user's personal library.
+  const cloneSong = useCallback((source: Song): Song => {
+    return addSong({
+      title: source.title,
+      composer: source.composer,
+      voicePart: source.voicePart,
+      lyrics: source.lyrics,
+      concertDate: source.concertDate,
+      isPublic: false,
+    })
+  }, [addSong])
+
   const updateCard = useCallback((songId: string, card: Card) => {
-    // Optimistic local update.
     setSongs((prev) =>
       prev.map((s) =>
         s.id === songId
@@ -186,5 +205,5 @@ export function useStorage(userId: string) {
     [songs],
   )
 
-  return { songs, loading, addSong, updateCard, deleteSong, getSong }
+  return { songs, publicSongs, loading, addSong, cloneSong, updateCard, deleteSong, getSong }
 }

@@ -1,14 +1,28 @@
-import type { Song } from '../types'
+import { useState } from 'react'
+import type { Group, PracticeList, Song } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
+import { CommunityTab } from './CommunityTab'
+import { GroupsTab } from './GroupsTab'
+
+type Tab = 'mine' | 'community' | 'groups'
 
 interface SongLibraryProps {
   songs: Song[]
+  publicSongs: Song[]
+  groups: Group[]
+  groupsLoading: boolean
+  allPracticeLists: PracticeList[]
   onOpen: (songId: string) => void
   onStudy: (songId: string) => void
   onAdd: () => void
   onSignOut: () => void
+  onCloneSong: (song: Song) => void
+  onOpenGroup: (group: Group) => void
+  onCreateGroup: (name: string, description?: string) => Promise<void>
+  onJoinGroup: (inviteCode: string) => Promise<Group | null>
+  onAddToPracticeList: (song: Song, listId: string) => void
 }
 
 const DAY_MS = 86_400_000
@@ -30,23 +44,27 @@ function formatRelative(now: number, ts?: number): string {
 }
 
 export function SongLibrary({
-  songs,
-  onOpen,
-  onStudy,
-  onAdd,
-  onSignOut,
+  songs, publicSongs, groups, groupsLoading, allPracticeLists,
+  onOpen, onStudy, onAdd, onSignOut, onCloneSong,
+  onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList,
 }: SongLibraryProps) {
   const now = useNow()
+  const [tab, setTab] = useState<Tab>('mine')
+
+  const mySongIds = new Set(songs.map((s) => s.id))
+
   return (
     <Shell>
       <Header
-        title="Lyrica"
+        title="Lyrico"
         subtitle="Learn your lyrics by heart"
         right={
           <div className="flex items-center gap-1">
-            <IconButton label="Add song" onClick={onAdd}>
-              <PlusIcon />
-            </IconButton>
+            {tab === 'mine' && (
+              <IconButton label="Add song" onClick={onAdd}>
+                <PlusIcon />
+              </IconButton>
+            )}
             <IconButton label="Sign out" onClick={onSignOut}>
               <SignOutIcon />
             </IconButton>
@@ -54,94 +72,88 @@ export function SongLibrary({
         }
       />
 
-      {songs.length === 0 ? (
-        <EmptyState onAdd={onAdd} />
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {songs.map((song) => (
-            <li key={song.id}>
-              <SongRow
-                song={song}
-                now={now}
-                onOpen={() => onOpen(song.id)}
-                onStudy={() => onStudy(song.id)}
-              />
-            </li>
-          ))}
-        </ul>
+      {/* Tab bar */}
+      <div className="mb-5 flex gap-1 rounded-xl border border-border bg-bg-soft p-1">
+        {([['mine', 'My Songs'], ['community', 'Community'], ['groups', 'Groups']] as [Tab, string][]).map(([t, label]) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`flex-1 rounded-lg py-2 text-sm transition-colors ${tab === t ? 'bg-bg-card text-accent' : 'text-text-dim hover:text-text'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'mine' && (
+        songs.length === 0 ? (
+          <EmptyState onAdd={onAdd} />
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {songs.map((song) => (
+              <li key={song.id}>
+                <SongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} />
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+
+      {tab === 'community' && (
+        <CommunityTab
+          songs={publicSongs}
+          mySongIds={mySongIds}
+          practiceLists={allPracticeLists}
+          onAddToLibrary={onCloneSong}
+          onAddToPracticeList={onAddToPracticeList}
+        />
+      )}
+
+      {tab === 'groups' && (
+        <GroupsTab
+          groups={groups}
+          loading={groupsLoading}
+          onOpenGroup={onOpenGroup}
+          onCreateGroup={onCreateGroup}
+          onJoinGroup={onJoinGroup}
+        />
       )}
     </Shell>
   )
 }
 
-function SongRow({
-  song,
-  now,
-  onOpen,
-  onStudy,
-}: {
-  song: Song
-  now: number
-  onOpen: () => void
-  onStudy: () => void
-}) {
+function SongRow({ song, now, onOpen, onStudy }: { song: Song; now: number; onOpen: () => void; onStudy: () => void }) {
   const mastery = masteryPercent(song)
   const concertDays = song.concertDate ? daysUntil(song.concertDate, now) : null
   const concertUrgent = concertDays !== null && concertDays <= 7
 
   return (
     <div className="rounded-2xl border border-border bg-bg-soft">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="block w-full px-4 pt-4 text-left"
-      >
+      <button type="button" onClick={onOpen} className="block w-full px-4 pt-4 text-left">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="truncate text-lg text-text">{song.title}</h2>
           <span className="shrink-0 text-sm text-accent">{mastery}%</span>
         </div>
         <p className="mt-0.5 truncate text-sm text-text-dim">
-          {[song.composer, song.voicePart].filter(Boolean).join(' · ') ||
-            `${song.cards.length} lines`}
+          {[song.composer, song.voicePart].filter(Boolean).join(' · ') || `${song.cards.length} lines`}
         </p>
-
         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
-          <div
-            className="h-full rounded-full bg-accent transition-[width]"
-            style={{ width: `${mastery}%` }}
-          />
+          <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${mastery}%` }} />
         </div>
-
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-dim">
           <span>Last practiced {formatRelative(now, song.lastStudied)}</span>
           {concertDays !== null && (
-            <span
-              className={
-                concertUrgent ? 'text-wrong' : 'text-accent-soft'
-              }
-            >
+            <span className={concertUrgent ? 'text-wrong' : 'text-accent-soft'}>
               · Concert in {Math.max(0, concertDays)}d
             </span>
           )}
         </div>
       </button>
-
       <div className="mt-3 flex border-t border-border">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex-1 py-3 text-sm text-text-dim hover:text-text"
-        >
-          Details
-        </button>
+        <button type="button" onClick={onOpen} className="flex-1 py-3 text-sm text-text-dim hover:text-text">Details</button>
         <div className="w-px bg-border" />
-        <button
-          type="button"
-          onClick={onStudy}
-          className="flex-1 py-3 text-sm text-accent hover:brightness-110"
-        >
-          Study
-        </button>
+        <button type="button" onClick={onStudy} className="flex-1 py-3 text-sm text-accent hover:brightness-110">Study</button>
       </div>
     </div>
   )
@@ -152,14 +164,9 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
     <div className="mt-10 rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
       <h2 className="text-xl text-text">No songs yet</h2>
       <p className="mt-2 text-sm text-text-dim">
-        Paste a song's lyrics — one line per row — and Lyrica will drill you
-        line by line until you have it memorized.
+        Paste a song's lyrics — one line per row — and Lyrico will drill you line by line until you have it memorized.
       </p>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="mt-5 rounded-full border border-accent bg-accent/10 px-5 py-2 text-accent hover:bg-accent/20"
-      >
+      <button type="button" onClick={onAdd} className="mt-5 rounded-full border border-accent bg-accent/10 px-5 py-2 text-accent hover:bg-accent/20">
         Add your first song
       </button>
     </div>
@@ -168,15 +175,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 
 function PlusIcon() {
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-    >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
     </svg>
   )
@@ -184,16 +183,7 @@ function PlusIcon() {
 
 function SignOutIcon() {
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />

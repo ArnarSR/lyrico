@@ -51,4 +51,37 @@ export interface Song {
   cards: Card[]
   createdAt: number
   lastStudied?: number
+  isPublic?: boolean
+  ownerId?: string // user_id of the song owner (set on community/practice list songs)
+}
+
+export interface Profile {
+  userId: string
+  displayName: string
+  createdAt: number
+}
+
+export interface Group {
+  id: string
+  name: string
+  description?: string
+  createdBy: string
+  inviteCode: string
+  createdAt: number
+}
+
+export interface GroupMember {
+  groupId: string
+  userId: string
+  role: 'admin' | 'member'
+  joinedAt: number
+  displayName: string
+}
+
+export interface PracticeList {
+  id: string
+  groupId: string
+  name: string
+  createdBy: string
+  createdAt: number
 }
