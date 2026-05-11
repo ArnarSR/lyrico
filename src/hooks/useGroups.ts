@@ -47,6 +47,7 @@ function generateInviteCode(): string {
 
 export function useGroups(userId: string) {
   const [myGroups, setMyGroups] = useState<Group[]>([])
+  const [allPracticeLists, setAllPracticeLists] = useState<PracticeList[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -57,13 +58,20 @@ export function useGroups(userId: string) {
 
       if (!memberships?.length) { setMyGroups([]); setLoading(false); return }
 
-      const { data: groupRows } = await supabase
-        .from('groups').select('*')
-        .in('id', memberships.map((m: { group_id: string }) => m.group_id))
-        .order('created_at', { ascending: false })
+      const groupIds = memberships.map((m: { group_id: string }) => m.group_id)
+
+      const [groupsRes, listsRes] = await Promise.all([
+        supabase.from('groups').select('*')
+          .in('id', groupIds)
+          .order('created_at', { ascending: false }),
+        supabase.from('practice_lists').select('*')
+          .in('group_id', groupIds)
+          .order('created_at'),
+      ])
 
       if (!cancelled) {
-        setMyGroups((groupRows ?? []).map((r) => rowToGroup(r as GroupRow)))
+        setMyGroups((groupsRes.data ?? []).map((r) => rowToGroup(r as GroupRow)))
+        setAllPracticeLists((listsRes.data ?? []).map((r) => rowToList(r as ListRow)))
         setLoading(false)
       }
     }
@@ -126,7 +134,9 @@ export function useGroups(userId: string) {
     const row: ListRow = { id: uid(), group_id: groupId, name: name.trim(), created_by: userId, created_at: Date.now() }
     const { error } = await supabase.from('practice_lists').insert(row)
     if (error) throw error
-    return rowToList(row)
+    const list = rowToList(row)
+    setAllPracticeLists((prev) => [...prev, list])
+    return list
   }, [userId])
 
   const deletePracticeList = useCallback(async (listId: string) => {
@@ -158,7 +168,7 @@ export function useGroups(userId: string) {
   }, [])
 
   return {
-    myGroups, loading,
+    myGroups, allPracticeLists, loading,
     createGroup, joinGroup, leaveGroup,
     getGroupDetails, createPracticeList, deletePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,

@@ -78,6 +78,8 @@ function cardToRow(card: Card, songId: string, userId: string): CardRow {
   }
 }
 
+const DAY_MS = 86_400_000
+
 function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
   const cards = cardRows
     .filter((c) => c.song_id === songRow.id)
@@ -85,6 +87,14 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     .map(rowToCard)
     .filter((c) => !isSectionLabel(c.text))
     .map((c, i) => ({ ...c, lineIndex: i }))
+
+  // Approximate lastStudied from card SM-2 state: nextDue - interval*day
+  const lastStudied = cards.reduce<number | undefined>((max, c) => {
+    if (c.lastQuality === null) return max
+    const studied = c.nextDue - c.interval * DAY_MS
+    return max === undefined ? studied : Math.max(max, studied)
+  }, undefined)
+
   return {
     id: songRow.id,
     title: songRow.title,
@@ -98,6 +108,7 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     createdAt: songRow.created_at,
     isPublic: songRow.is_public,
     ownerId: songRow.user_id,
+    lastStudied,
   }
 }
 
@@ -183,10 +194,15 @@ export function useStorage(userId: string) {
   }, [addSong])
 
   const updateCard = useCallback((songId: string, card: Card) => {
+    const now = Date.now()
     setSongs((prev) =>
       prev.map((s) =>
         s.id === songId
-          ? { ...s, cards: s.cards.map((c) => (c.id === card.id ? card : c)) }
+          ? {
+              ...s,
+              lastStudied: Math.max(s.lastStudied ?? 0, now),
+              cards: s.cards.map((c) => (c.id === card.id ? card : c)),
+            }
           : s,
       ),
     )

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
 import { useGroups } from './hooks/useGroups'
@@ -39,9 +39,9 @@ export default function App() {
 }
 
 function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
-  const { songs, publicSongs, addSong, cloneSong, updateCard, deleteSong, getSong } = useStorage(userId)
+  const { songs, publicSongs, loading: songsLoading, addSong, cloneSong, updateCard, deleteSong, getSong } = useStorage(userId)
   const {
-    myGroups, loading: groupsLoading,
+    myGroups, allPracticeLists, loading: groupsLoading,
     createGroup, joinGroup, leaveGroup,
     getGroupDetails, createPracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
@@ -50,13 +50,24 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
 
   const mySongIds = new Set(songs.map((s) => s.id))
 
-  // Collect all practice lists from all groups (fetched lazily in group detail)
-  // For community tab we just need the practice lists the user has access to —
-  // we'll derive them from the group detail cache; for now pass an empty array
-  // and let the group detail screen manage lists directly.
-  // allPracticeLists is used in community tab for "add to list" dropdown:
-  // we need a separate fetch. We'll keep a flat cache updated when groups are opened.
-  const [allPracticeLists, setAllPracticeLists] = useState<PracticeList[]>([])
+  // Navigate back to library if the song being viewed was deleted.
+  useEffect(() => {
+    if (songsLoading) return
+    if ('songId' in view && !getSong(view.songId)) {
+      setView({ name: 'library' })
+    }
+  }, [songsLoading, view, getSong])
+
+  // Stable callback so GroupDetail's useEffect doesn't loop.
+  const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
+
+  if (songsLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-text-dim">Loading…</p>
+      </div>
+    )
+  }
 
   if (view.name === 'add') {
     return (
@@ -126,20 +137,8 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         userId={userId}
         onBack={() => setView({ name: 'library' })}
         onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
-        onGetDetails={async (groupId) => {
-          const details = await getGroupDetails(groupId)
-          // Cache practice lists for community tab
-          setAllPracticeLists((prev) => {
-            const others = prev.filter((pl) => pl.groupId !== groupId)
-            return [...others, ...details.practiceLists]
-          })
-          return details
-        }}
-        onCreatePracticeList={async (groupId, name) => {
-          const list = await createPracticeList(groupId, name)
-          setAllPracticeLists((prev) => [...prev, list])
-          return list
-        }}
+        onGetDetails={handleGetGroupDetails}
+        onCreatePracticeList={createPracticeList}
         onLeaveGroup={leaveGroup}
       />
     )
@@ -152,7 +151,6 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         userId={userId}
         mySongIds={mySongIds}
         onBack={() => {
-          // Go back to the group that owns this list
           const group = myGroups.find((g) => g.id === view.list.groupId)
           if (group) setView({ name: 'group', group })
           else setView({ name: 'library' })

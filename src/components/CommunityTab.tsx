@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Song, PracticeList } from '../types'
 
 interface CommunityTabProps {
@@ -9,6 +10,8 @@ interface CommunityTabProps {
 }
 
 export function CommunityTab({ songs, mySongIds, practiceLists, onAddToLibrary, onAddToPracticeList }: CommunityTabProps) {
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
+
   if (songs.length === 0) {
     return (
       <div className="mt-10 rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
@@ -43,25 +46,38 @@ export function CommunityTab({ songs, mySongIds, practiceLists, onAddToLibrary, 
                 </button>
               )}
               {practiceLists.length > 0 && (
-                <div className="relative group">
+                <div className="relative">
                   <button
                     type="button"
+                    onClick={() => setOpenDropdown(openDropdown === song.id ? null : song.id)}
                     className="text-xs text-text-dim/60 hover:text-text-dim"
                   >
                     + Add to list ▾
                   </button>
-                  <div className="absolute right-0 top-6 z-10 hidden min-w-[160px] rounded-xl border border-border bg-bg-card p-1 shadow-lg group-focus-within:block group-hover:block">
-                    {practiceLists.map((list) => (
-                      <button
-                        key={list.id}
-                        type="button"
-                        onClick={() => onAddToPracticeList(song, list.id)}
-                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-text hover:bg-bg-soft"
-                      >
-                        {list.name}
-                      </button>
-                    ))}
-                  </div>
+                  {openDropdown === song.id && (
+                    <>
+                      {/* Backdrop to close on outside click */}
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setOpenDropdown(null)}
+                      />
+                      <div className="absolute right-0 top-6 z-20 min-w-[160px] rounded-xl border border-border bg-bg-card p-1 shadow-lg">
+                        {practiceLists.map((list) => (
+                          <button
+                            key={list.id}
+                            type="button"
+                            onClick={() => {
+                              onAddToPracticeList(song, list.id)
+                              setOpenDropdown(null)
+                            }}
+                            className="block w-full rounded-lg px-3 py-2 text-left text-sm text-text hover:bg-bg-soft"
+                          >
+                            {list.name}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
