@@ -85,9 +85,9 @@ export function useGroups(userId: string) {
     const row: GroupRow = { id: groupId, name: name.trim(), description: description?.trim() || null, created_by: userId, invite_code: generateInviteCode(), created_at: now }
 
     const { error: ge } = await supabase.from('groups').insert(row)
-    if (ge) throw ge
+    if (ge) { console.error('createGroup (groups):', ge); throw ge }
     const { error: me } = await supabase.from('group_members').insert({ group_id: groupId, user_id: userId, role: 'admin', joined_at: now })
-    if (me) throw me
+    if (me) { console.error('createGroup (group_members):', me); throw me }
 
     const group = rowToGroup(row)
     setMyGroups((prev) => [group, ...prev])
