@@ -232,9 +232,9 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
             ref={pasteRef}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            rows={6}
             placeholder={"Paste a verse or the full song here…\nOne line per row."}
-            className="w-full resize-y rounded-xl border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-text placeholder:text-text-dim/40 focus:border-accent focus:outline-none"
+            className="w-full resize-none rounded-xl border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-text placeholder:text-text-dim/40 focus:border-accent focus:outline-none"
+            style={{ height: 'calc(100dvh - 260px)', minHeight: '160px' }}
           />
           <div className="mt-3 flex gap-2">
             <button
