@@ -202,6 +202,7 @@ export function useStorage(userId: string) {
       concert_date: input.concertDate ?? null,
       created_at: now,
       is_public: input.isPublic ?? false,
+      is_known: false,
     }
     const cardRows = cards.map((c) => cardToRow(c, songId, userId))
 

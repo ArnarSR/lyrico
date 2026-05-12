@@ -22,7 +22,7 @@ export function StudySession({
   onExit,
   onCardReviewed,
 }: StudySessionProps) {
-  const { review, isMastered } = useSM2()
+  const { review } = useSM2()
   // activeCards is the working set for this session (all or a single verse).
   const activeCards = activeProp ?? song.cards
 
@@ -114,7 +114,6 @@ export function StudySession({
     return () => cancelAnimationFrame(id)
   }, [current?.id, checked, isInline])
 
-  const mastered = activeCards.filter(isMastered).length
   const progress = activeCards.length === 0 ? 0
     : activeCards.reduce((sum, c) => sum + cardMastery(c), 0) / activeCards.length
 

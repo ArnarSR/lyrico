@@ -337,7 +337,6 @@ function PhaseRoadmap({ cards }: { cards: Card[] }) {
           {PHASES.map((phase, i) => {
             const done = phaseDone[i] >= total
             const isCurrent = i === currentIdx
-            const isFuture = !done && !isCurrent
 
             return (
               <div key={i} className="flex flex-col items-center gap-2" style={{ width: '33.33%' }}>
