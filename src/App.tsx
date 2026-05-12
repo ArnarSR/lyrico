@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
 import { useGroups } from './hooks/useGroups'
 import { Auth } from './components/Auth'
+import { Onboarding } from './components/Onboarding'
 import { SongLibrary } from './components/SongLibrary'
 import { AddSong } from './components/AddSong'
 import { StudySession } from './components/StudySession'
@@ -39,6 +40,20 @@ export default function App() {
 }
 
 function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
+  const [onboarded, setOnboarded] = useState(
+    () => localStorage.getItem('lyrico_onboarded') === 'true',
+  )
+
+  if (!onboarded) {
+    return (
+      <Onboarding
+        onDone={() => {
+          localStorage.setItem('lyrico_onboarded', 'true')
+          setOnboarded(true)
+        }}
+      />
+    )
+  }
   const {
     songs, publicSongs, userLists, listSongIds, loading: songsLoading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong,
