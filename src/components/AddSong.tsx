@@ -5,24 +5,57 @@ import type { NewSongInput } from '../hooks/useStorage'
 import { isSectionLabel } from '../lib/stanzas'
 import { Header, Shell } from './Shell'
 
+const DRAFT_KEY = 'lyrico_add_song_draft'
+
+interface Draft {
+  title: string
+  composer: string
+  voicePart: VoicePart | ''
+  lyrics: string
+  concertDate: string
+  isPublic: boolean
+}
+
+function loadDraft(): Draft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    return raw ? JSON.parse(raw) as Draft : null
+  } catch { return null }
+}
+
+function saveDraft(d: Draft) {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)) } catch { /* ignore */ }
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
+}
+
 interface AddSongProps {
   onCancel: () => void
   onSave: (input: NewSongInput) => void
 }
 
 export function AddSong({ onCancel, onSave }: AddSongProps) {
-  const [title, setTitle] = useState('')
-  const [composer, setComposer] = useState('')
-  const [voicePart, setVoicePart] = useState<VoicePart | ''>('')
-  const [lyrics, setLyrics] = useState('')
-  const [concertDate, setConcertDate] = useState('')
+  const draft = loadDraft()
+  const [title, setTitle] = useState(draft?.title ?? '')
+  const [composer, setComposer] = useState(draft?.composer ?? '')
+  const [voicePart, setVoicePart] = useState<VoicePart | ''>(draft?.voicePart ?? '')
+  const [lyrics, setLyrics] = useState(draft?.lyrics ?? '')
+  const [concertDate, setConcertDate] = useState(draft?.concertDate ?? '')
   const [audioUrl, setAudioUrl] = useState<string | undefined>()
   const [audioName, setAudioName] = useState<string | undefined>()
-  const [isPublic, setIsPublic] = useState(false)
+  const [isPublic, setIsPublic] = useState(draft?.isPublic ?? false)
   const [importUrl, setImportUrl] = useState('')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [showRestoredBanner, setShowRestoredBanner] = useState(!!draft && (!!draft.title || !!draft.lyrics))
   const lyricsRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auto-save draft whenever key fields change
+  useEffect(() => {
+    saveDraft({ title, composer, voicePart, lyrics, concertDate, isPublic })
+  }, [title, composer, voicePart, lyrics, concertDate, isPublic])
 
   // Auto-resize lyrics textarea whenever content changes
   useEffect(() => {
@@ -69,6 +102,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!canSave) return
+    clearDraft()
     onSave({
       title: title.trim(),
       composer: composer.trim() || undefined,
@@ -81,17 +115,36 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
     })
   }
 
+  function handleCancel() {
+    // Only clear draft if there's nothing worth keeping
+    if (!title.trim() && !lyrics.trim()) clearDraft()
+    onCancel()
+  }
+
   return (
     <Shell>
       <Header
         title="New song"
         subtitle={lineCount > 0 ? `${lineCount} lines` : 'Paste lyrics below'}
         right={
-          <button type="button" onClick={onCancel} className="text-sm text-text-dim hover:text-text">
+          <button type="button" onClick={handleCancel} className="text-sm text-text-dim hover:text-text">
             Cancel
           </button>
         }
       />
+
+      {showRestoredBanner && (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm text-accent">
+          <span>✦ Draft restored</span>
+          <button
+            type="button"
+            onClick={() => { clearDraft(); setTitle(''); setComposer(''); setVoicePart(''); setLyrics(''); setConcertDate(''); setIsPublic(false); setShowRestoredBanner(false) }}
+            className="ml-4 text-xs text-accent/70 hover:text-accent"
+          >
+            Discard
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Field label="Title">
@@ -191,7 +244,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
         <div className="mt-2 flex gap-3">
           <button
             type="button"
-            onClick={onCancel}
+            onClick={handleCancel}
             className="flex-1 rounded-full border border-border bg-bg-soft py-3 text-text-dim hover:text-text"
           >
             Cancel

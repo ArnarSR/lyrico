@@ -17,16 +17,35 @@ interface Row {
 let nextKey = 0
 function genKey() { return String(nextKey++) }
 
+function editDraftKey(songId: string) { return `lyrico_edit_draft_${songId}` }
+
+function loadEditDraft(songId: string): { id?: string; text: string }[] | null {
+  try {
+    const raw = localStorage.getItem(editDraftKey(songId))
+    return raw ? JSON.parse(raw) as { id?: string; text: string }[] : null
+  } catch { return null }
+}
+
 export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
-  const [rows, setRows] = useState<Row[]>(() =>
-    song.cards.map((c) => ({ key: genKey(), id: c.id, text: c.text })),
-  )
+  const draft = loadEditDraft(song.id)
+  const [rows, setRows] = useState<Row[]>(() => {
+    const source = draft ?? song.cards.map((c) => ({ id: c.id, text: c.text }))
+    return source.map((c) => ({ key: genKey(), id: c.id, text: c.text }))
+  })
+  const [showRestoredBanner, setShowRestoredBanner] = useState(!!draft)
   const [saving, setSaving] = useState(false)
   const [focusKey, setFocusKey] = useState<string | null>(null)
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const pasteRef = useRef<HTMLTextAreaElement>(null)
   const inputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map())
+
+  // Auto-save edit draft whenever rows change
+  useEffect(() => {
+    try {
+      localStorage.setItem(editDraftKey(song.id), JSON.stringify(rows.map(({ id, text }) => ({ id, text }))))
+    } catch { /* ignore */ }
+  }, [rows, song.id])
 
   useEffect(() => {
     if (showPaste) pasteRef.current?.focus()
@@ -87,6 +106,7 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
     setSaving(true)
     try {
       await onSave(lines.map(({ id, text }) => ({ id, text: text.trim() })))
+      try { localStorage.removeItem(editDraftKey(song.id)) } catch { /* ignore */ }
     } finally {
       setSaving(false)
     }
@@ -127,6 +147,23 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
           </button>
         }
       />
+
+      {showRestoredBanner && (
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm text-accent">
+          <span>✦ Unsaved draft restored</span>
+          <button
+            type="button"
+            onClick={() => {
+              try { localStorage.removeItem(editDraftKey(song.id)) } catch { /* ignore */ }
+              setRows(song.cards.map((c) => ({ key: genKey(), id: c.id, text: c.text })))
+              setShowRestoredBanner(false)
+            }}
+            className="ml-4 text-xs text-accent/70 hover:text-accent"
+          >
+            Discard
+          </button>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <p className="mb-4 text-xs text-text-dim">
