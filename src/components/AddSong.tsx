@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { VoicePart } from '../types'
 import { VOICE_PARTS } from '../types'
 import type { NewSongInput } from '../hooks/useStorage'
@@ -22,6 +22,15 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   const [importUrl, setImportUrl] = useState('')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const lyricsRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auto-resize lyrics textarea whenever content changes
+  useEffect(() => {
+    const el = lyricsRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [lyrics])
 
   const lineCount = lyrics
     .split('\n')
@@ -140,11 +149,12 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
           </div>
           {importError && <p className="mb-1 text-xs text-wrong">{importError}</p>}
           <textarea
+            ref={lyricsRef}
             value={lyrics}
             onChange={(e) => setLyrics(e.target.value)}
-            rows={10}
             placeholder={'Ave verum corpus natum\nDe Maria Virgine...'}
-            className={`${inputCx} resize-y leading-relaxed`}
+            className={`${inputCx} resize-none leading-relaxed`}
+            style={{ minHeight: 'calc(100dvh - 480px)', overflow: 'hidden' }}
           />
         </Field>
 
