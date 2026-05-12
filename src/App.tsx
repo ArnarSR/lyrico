@@ -54,7 +54,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
   const {
     myGroups, allPracticeLists, loading: groupsLoading,
     createGroup, joinGroup, leaveGroup,
-    getGroupDetails, createPracticeList,
+    getGroupDetails, createPracticeList, updatePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   } = useGroups(userId)
   const [view, setView] = useState<View>({ name: 'library' })
@@ -181,7 +181,8 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onBack={() => setView({ name: 'library' })}
         onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
         onGetDetails={handleGetGroupDetails}
-        onCreatePracticeList={createPracticeList}
+        onCreatePracticeList={(groupId, name, listType, concertDate) => createPracticeList(groupId, name, listType, concertDate)}
+        onUpdatePracticeList={updatePracticeList}
         onLeaveGroup={leaveGroup}
       />
     )
@@ -203,6 +204,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onGetSongs={getPracticeListSongs}
         onAddSong={addSongToPracticeList}
         onRemoveSong={removeSongFromPracticeList}
+        onUpdateList={(patch) => updatePracticeList(view.list.id, patch)}
       />
     )
   }

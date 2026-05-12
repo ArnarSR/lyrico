@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Group, GroupMember, PracticeList, Song } from '../types'
+import type { Group, GroupMember, PracticeList, Song, UserListType } from '../types'
 import { uid } from '../lib/id'
 import { supabase } from '../lib/supabase'
 import { fetchProfiles } from './useProfile'
@@ -15,6 +15,7 @@ interface MemberRow {
 }
 interface ListRow {
   id: string; group_id: string; name: string; created_by: string; created_at: number
+  list_type: string; concert_date: number | null
 }
 interface SongRow {
   id: string; user_id: string; title: string; composer: string | null
@@ -32,7 +33,7 @@ function rowToMember(r: MemberRow, names: Map<string, string>): GroupMember {
   return { groupId: r.group_id, userId: r.user_id, role: r.role as 'admin' | 'member', joinedAt: r.joined_at, displayName: names.get(r.user_id) ?? r.user_id.slice(0, 8) }
 }
 function rowToList(r: ListRow): PracticeList {
-  return { id: r.id, groupId: r.group_id, name: r.name, createdBy: r.created_by, createdAt: r.created_at }
+  return { id: r.id, groupId: r.group_id, name: r.name, createdBy: r.created_by, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'concert', concertDate: r.concert_date ?? undefined }
 }
 function rowToSong(r: SongRow): Song {
   return { id: r.id, title: r.title, composer: r.composer ?? undefined, lyrics: r.lyrics, cards: [], createdAt: r.created_at, isPublic: r.is_public, ownerId: r.user_id }
@@ -130,14 +131,30 @@ export function useGroups(userId: string) {
     }
   }, [])
 
-  const createPracticeList = useCallback(async (groupId: string, name: string): Promise<PracticeList> => {
-    const row: ListRow = { id: uid(), group_id: groupId, name: name.trim(), created_by: userId, created_at: Date.now() }
+  const createPracticeList = useCallback(async (groupId: string, name: string, listType: UserListType = 'concert', concertDate?: number): Promise<PracticeList> => {
+    const row: ListRow = { id: uid(), group_id: groupId, name: name.trim(), created_by: userId, created_at: Date.now(), list_type: listType, concert_date: concertDate ?? null }
     const { error } = await supabase.from('practice_lists').insert(row)
     if (error) throw error
     const list = rowToList(row)
     setAllPracticeLists((prev) => [...prev, list])
     return list
   }, [userId])
+
+  const updatePracticeList = useCallback(async (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => {
+    setAllPracticeLists((prev) => prev.map((l) => {
+      if (l.id !== listId) return l
+      const updated = { ...l }
+      if (patch.name !== undefined) updated.name = patch.name
+      if (patch.listType !== undefined) updated.listType = patch.listType
+      if ('concertDate' in patch) updated.concertDate = patch.concertDate ?? undefined
+      return updated
+    }))
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.name !== undefined) dbPatch.name = patch.name.trim()
+    if (patch.listType !== undefined) dbPatch.list_type = patch.listType
+    if ('concertDate' in patch) dbPatch.concert_date = patch.concertDate ?? null
+    await supabase.from('practice_lists').update(dbPatch).eq('id', listId)
+  }, [])
 
   const deletePracticeList = useCallback(async (listId: string) => {
     await supabase.from('practice_lists').delete().eq('id', listId)
@@ -170,7 +187,7 @@ export function useGroups(userId: string) {
   return {
     myGroups, allPracticeLists, loading,
     createGroup, joinGroup, leaveGroup,
-    getGroupDetails, createPracticeList, deletePracticeList,
+    getGroupDetails, createPracticeList, updatePracticeList, deletePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   }
 }

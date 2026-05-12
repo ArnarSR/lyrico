@@ -256,7 +256,7 @@ function PracticeTab({
           onUpdateList={(patch) => onUpdateUserList(list.id, patch)}
         />
       ))}
-      {allPracticeLists.map((list) => {
+      {allPracticeLists.filter((l) => l.listType === 'concert').map((list) => {
         const group = groups.find((g) => g.id === list.groupId)
         return (
           <PracticeListCard
@@ -265,7 +265,7 @@ function PracticeTab({
             subtitle={group?.name}
             listType="concert"
             listSongs={getListSongs(list.id, true)}
-            concertDate={undefined}
+            concertDate={list.concertDate}
             now={now}
             expanded={expandedId === list.id}
             loading={fetchingId === list.id}
@@ -280,9 +280,31 @@ function PracticeTab({
       })}
 
       {/* ── Standard Repertoire ── */}
-      {standardLists.length > 0 && (
+      {(standardLists.length > 0 || allPracticeLists.some((l) => l.listType === 'standard')) && (
         <SectionHeader icon="🎵" label="Standard Repertoire" />
       )}
+      {allPracticeLists.filter((l) => l.listType === 'standard').map((list) => {
+        const group = groups.find((g) => g.id === list.groupId)
+        return (
+          <PracticeListCard
+            key={list.id}
+            name={list.name}
+            subtitle={group?.name}
+            listType="standard"
+            listSongs={getListSongs(list.id, true)}
+            concertDate={undefined}
+            now={now}
+            expanded={expandedId === list.id}
+            loading={fetchingId === list.id}
+            isOwner={false}
+            onToggleExpand={() => toggleExpand(list.id)}
+            onStudy={onStudy}
+            onOpen={onOpen}
+            onToggleKnown={onToggleKnown}
+            onUpdateList={undefined}
+          />
+        )
+      })}
       {standardLists.map((list) => (
         <PracticeListCard
           key={list.id}
