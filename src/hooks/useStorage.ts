@@ -281,6 +281,27 @@ export function useStorage(userId: string) {
     [songs],
   )
 
+  const masterSong = useCallback((songId: string) => {
+    const now = Date.now()
+    setSongs((prev) => prev.map((s) => {
+      if (s.id !== songId) return s
+      const masteredCards = s.cards.map((c) => ({
+        ...c,
+        difficulty: 2 as Card['difficulty'],
+        repetitions: 3,
+        interval: 21,
+        easeFactor: Math.max(c.easeFactor, 2.5),
+        nextDue: now + 21 * DAY_MS,
+        lastQuality: 5,
+      }))
+      // Fire-and-forget DB update
+      supabase.from('cards').upsert(
+        masteredCards.map((c) => cardToRow(c, songId, userId)),
+      ).then(({ error }) => { if (error) console.error('masterSong:', error) })
+      return { ...s, cards: masteredCards }
+    }))
+  }, [userId])
+
   // ── Personal lists ─────────────────────────────────────────────────────────
 
   const createUserList = useCallback(async (name: string): Promise<UserList> => {
@@ -324,7 +345,7 @@ export function useStorage(userId: string) {
 
   return {
     songs, publicSongs, userLists, listSongIds, loading,
-    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong,
+    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
     createUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   }
 }

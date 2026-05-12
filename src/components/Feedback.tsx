@@ -10,10 +10,10 @@ interface FeedbackProps {
   hintUsed?: boolean // if true, show a note that a hint was used
 }
 
-// Accent color as RGB for the shimmer gradient (#c8a96e)
+// Accent color as RGB for the shimmer gradient (#d4924a)
 const SHIMMER_STYLE: React.CSSProperties = {
   background:
-    'linear-gradient(90deg, rgba(200,169,110,0.10) 0%, rgba(200,169,110,0.38) 40%, rgba(200,169,110,0.10) 100%)',
+    'linear-gradient(90deg, rgba(212,146,74,0.10) 0%, rgba(212,146,74,0.38) 40%, rgba(212,146,74,0.10) 100%)',
   backgroundSize: '200% auto',
   animation: 'lyrico-shimmer 1.8s linear infinite',
 }

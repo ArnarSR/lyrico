@@ -14,6 +14,7 @@ interface SongStatsProps {
   onStudy: () => void
   onStudyVerse: (stanzaIdx: number) => void
   onStanzaDrill: () => void
+  onTest: () => void
   onDelete: () => void
   onTogglePublic: () => void
   onToggleKnown: () => void
@@ -27,7 +28,7 @@ const DAY_MS = 86_400_000
 
 export function SongStats({
   song, allPracticeLists, userLists, listSongIds,
-  onBack, onStudy, onStudyVerse, onStanzaDrill, onDelete,
+  onBack, onStudy, onStudyVerse, onStanzaDrill, onTest, onDelete,
   onTogglePublic, onToggleKnown, onAddToPracticeList, onAddToUserList, onRemoveFromUserList, onCreateUserList,
 }: SongStatsProps) {
   const now = useNow()
@@ -135,6 +136,15 @@ export function SongStats({
           Study
         </button>
       </div>
+
+      {/* Test button */}
+      <button
+        type="button"
+        onClick={onTest}
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-full border border-border bg-bg-soft py-3 text-sm text-text-dim hover:border-accent hover:text-accent"
+      >
+        <span>🏆</span> Test yourself — full recall, all lines
+      </button>
 
       {/* Verses */}
       {verses.length > 0 && (

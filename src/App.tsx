@@ -8,6 +8,7 @@ import { SongLibrary } from './components/SongLibrary'
 import { AddSong } from './components/AddSong'
 import { StudySession } from './components/StudySession'
 import { StanzaSession } from './components/StanzaSession'
+import { TestSession } from './components/TestSession'
 import { SongStats } from './components/SongStats'
 import { GroupDetail } from './components/GroupDetail'
 import { PracticeListDetail } from './components/PracticeListDetail'
@@ -20,6 +21,7 @@ type View =
   | { name: 'stats'; songId: string }
   | { name: 'study'; songId: string; stanzaIdx?: number }
   | { name: 'stanza'; songId: string }
+  | { name: 'test'; songId: string }
   | { name: 'group'; group: Group }
   | { name: 'practice-list'; list: PracticeList }
 
@@ -46,7 +48,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
   )
   const {
     songs, publicSongs, userLists, listSongIds, loading: songsLoading,
-    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong,
+    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
     createUserList, addSongToUserList, removeSongFromUserList,
   } = useStorage(userId)
   const {
@@ -100,6 +102,18 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     )
   }
 
+  if (view.name === 'test') {
+    const song = getSong(view.songId)
+    if (!song) return null
+    return (
+      <TestSession
+        song={song}
+        onExit={() => setView({ name: 'stats', songId: view.songId })}
+        onMasterSong={() => masterSong(view.songId)}
+      />
+    )
+  }
+
   if (view.name === 'stanza') {
     const song = getSong(view.songId)
     if (!song) return null
@@ -144,6 +158,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onStudy={() => setView({ name: 'study', songId: song.id })}
         onStudyVerse={(stanzaIdx) => setView({ name: 'study', songId: song.id, stanzaIdx })}
         onStanzaDrill={() => setView({ name: 'stanza', songId: song.id })}
+        onTest={() => setView({ name: 'test', songId: song.id })}
         onDelete={() => {
           deleteSong(song.id)
           setView({ name: 'library' })
