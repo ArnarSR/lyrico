@@ -99,7 +99,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onCancel={() => setView({ name: 'library' })}
         onSave={(input) => {
           const song = addSong(input)
-          setView({ name: 'study', songId: song.id })
+          setView({ name: 'stats', songId: song.id })
         }}
       />
     )

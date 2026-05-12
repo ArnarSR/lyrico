@@ -29,6 +29,7 @@ export function PracticeListDetail({
   const [search, setSearch] = useState('')
   const [adding, setAdding] = useState<Set<string>>(new Set())
   const [editingDate, setEditingDate] = useState(false)
+  const [concertDate, setConcertDate] = useState<number | undefined>(list.concertDate)
   const [dateValue, setDateValue] = useState(
     list.concertDate ? formatDateInput(list.concertDate) : '',
   )
@@ -76,10 +77,11 @@ export function PracticeListDetail({
   function handleSaveDate() {
     const d = dateValue ? parseDateInput(dateValue) : null
     onUpdateList({ concertDate: d })
+    setConcertDate(d ?? undefined)
     setEditingDate(false)
   }
 
-  const daysLeft = list.listType === 'concert' && list.concertDate ? daysUntil(list.concertDate) : null
+  const daysLeft = list.listType === 'concert' && concertDate ? daysUntil(concertDate) : null
   const dColor = daysLeft === null ? '' : daysLeft <= 7 ? 'text-wrong' : daysLeft <= 30 ? 'text-accent' : 'text-text-dim'
   const rColor = readiness === null ? '' : readiness < 50 ? 'text-wrong' : readiness < 80 ? 'text-accent' : 'text-correct'
   const barColor = readiness === null ? '' : readiness < 50 ? 'bg-wrong/70' : readiness < 80 ? 'bg-accent' : 'bg-correct'
@@ -119,7 +121,7 @@ export function PracticeListDetail({
                   🗓 {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Concert today!' : 'Concert passed'}
                 </span>
               )}
-              {list.listType === 'concert' && !list.concertDate && (
+              {list.listType === 'concert' && !concertDate && (
                 <span className="text-wrong/70">No concert date set</span>
               )}
               {songsWithMastery.length > 0 && (
@@ -151,8 +153,8 @@ export function PracticeListDetail({
                   onClick={() => setEditingDate(true)}
                   className="text-xs text-text-dim/50 hover:text-text-dim"
                 >
-                  {list.concertDate
-                    ? `🗓 ${new Date(list.concertDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} — edit`
+                  {concertDate
+                    ? `🗓 ${new Date(concertDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} — edit`
                     : '+ Set concert date'}
                 </button>
               )}

@@ -54,10 +54,11 @@ export function useGroups(userId: string) {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const { data: memberships } = await supabase
+      const { data: memberships, error: memErr } = await supabase
         .from('group_members').select('group_id').eq('user_id', userId)
 
-      if (!memberships?.length) { setMyGroups([]); setLoading(false); return }
+      if (memErr) console.error('useGroups: group_members query error:', memErr)
+      if (!memberships?.length) { setMyGroups([]); setAllPracticeLists([]); setLoading(false); return }
 
       const groupIds = memberships.map((m: { group_id: string }) => m.group_id)
 
@@ -69,6 +70,9 @@ export function useGroups(userId: string) {
           .in('group_id', groupIds)
           .order('created_at'),
       ])
+
+      if (groupsRes.error) console.error('useGroups: groups query error:', groupsRes.error)
+      if (listsRes.error) console.error('useGroups: practice_lists query error:', listsRes.error)
 
       if (!cancelled) {
         setMyGroups((groupsRes.data ?? []).map((r) => rowToGroup(r as GroupRow)))
