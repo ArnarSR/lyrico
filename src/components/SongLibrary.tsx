@@ -3,6 +3,7 @@ import type { Group, PracticeList, Song, UserList, UserListType } from '../types
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
+import { CreateListForm } from './CreateListForm'
 import { GroupsTab } from './GroupsTab'
 import { FeedbackModal } from './FeedbackModal'
 
@@ -182,15 +183,6 @@ function PracticeTab({
   const [fetchedSongs, setFetchedSongs] = useState<Map<string, Song[]>>(new Map())
   const [fetchingId, setFetchingId] = useState<string | null>(null)
   const [showNewList, setShowNewList] = useState(false)
-  const [newType, setNewType] = useState<UserListType>('concert')
-  const [newListName, setNewListName] = useState('')
-  const [newListDate, setNewListDate] = useState('')
-  const [creating, setCreating] = useState(false)
-  const nameInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (showNewList) nameInputRef.current?.focus()
-  }, [showNewList])
 
   function toggleExpand(id: string) {
     const next = expandedId === id ? null : id
@@ -211,18 +203,6 @@ function PracticeTab({
     }
     const ids = listSongIds.get(listId) ?? new Set<string>()
     return songs.filter((s) => ids.has(s.id))
-  }
-
-  async function handleCreateList() {
-    if (!newListName.trim()) return
-    if (newType === 'concert' && !newListDate) return
-    setCreating(true)
-    const concertDate = newListDate ? new Date(newListDate).getTime() : undefined
-    await onCreateUserList(newListName.trim(), newType, concertDate)
-    setNewListName('')
-    setNewListDate('')
-    setShowNewList(false)
-    setCreating(false)
   }
 
   const concertLists = userLists
@@ -336,66 +316,13 @@ function PracticeTab({
 
       {/* New list form */}
       {showNewList ? (
-        <div className="rounded-2xl border border-border bg-bg-soft p-4">
-          {/* Type picker */}
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setNewType('concert')}
-              className={`rounded-xl border px-3 py-3 text-left transition-colors ${newType === 'concert' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-dim hover:text-text'}`}
-            >
-              <p className="text-base">🎭</p>
-              <p className="mt-1 text-sm font-medium">Concert</p>
-              <p className="text-xs opacity-70">Linked to a date</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setNewType('standard')}
-              className={`rounded-xl border px-3 py-3 text-left transition-colors ${newType === 'standard' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-dim hover:text-text'}`}
-            >
-              <p className="text-base">🎵</p>
-              <p className="mt-1 text-sm font-medium">Standard</p>
-              <p className="text-xs opacity-70">Learn at will</p>
-            </button>
-          </div>
-          <input
-            ref={nameInputRef}
-            type="text"
-            value={newListName}
-            onChange={(e) => setNewListName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !(newType === 'concert' && !newListDate)) handleCreateList() }}
-            placeholder={newType === 'concert' ? 'e.g. Spring Concert 2026' : 'e.g. Favourite Folk Songs'}
-            className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
-          />
-          {newType === 'concert' && (
-            <div className="mb-3 flex items-center gap-2">
-              <label className="shrink-0 text-xs text-text-dim">Concert date *</label>
-              <input
-                type="date"
-                value={newListDate}
-                onChange={(e) => setNewListDate(e.target.value)}
-                className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent"
-              />
-            </div>
-          )}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setShowNewList(false); setNewListName(''); setNewListDate('') }}
-              className="flex-1 rounded-xl border border-border py-2 text-sm text-text-dim hover:text-text"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={!newListName.trim() || (newType === 'concert' && !newListDate) || creating}
-              onClick={handleCreateList}
-              className="flex-[2] rounded-xl border border-accent/30 bg-accent/15 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25"
-            >
-              {creating ? 'Creating…' : 'Create list'}
-            </button>
-          </div>
-        </div>
+        <CreateListForm
+          onSave={async (name, listType, concertDate) => {
+            await onCreateUserList(name, listType, concertDate)
+            setShowNewList(false)
+          }}
+          onCancel={() => setShowNewList(false)}
+        />
       ) : (
         <button
           type="button"
@@ -634,15 +561,9 @@ function ListsTab({
   const [editingDateId, setEditingDateId] = useState<string | null>(null)
   const [dateValue, setDateValue] = useState('')
   const [showNewList, setShowNewList] = useState(false)
-  const [newType, setNewType] = useState<UserListType>('concert')
-  const [newName, setNewName] = useState('')
-  const [newDate, setNewDate] = useState('')
-  const [creating, setCreating] = useState(false)
   const renameInputRef = useRef<HTMLInputElement>(null)
-  const newNameRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (renamingId) renameInputRef.current?.focus() }, [renamingId])
-  useEffect(() => { if (showNewList) newNameRef.current?.focus() }, [showNewList])
 
   function startRename(list: UserList) {
     setRenamingId(list.id)
@@ -671,15 +592,6 @@ function ListsTab({
     onDeleteUserList(listId)
     setDeletingId(null)
     if (expandedId === listId) setExpandedId(null)
-  }
-
-  async function handleCreateList() {
-    if (!newName.trim()) return
-    if (newType === 'concert' && !newDate) return
-    setCreating(true)
-    const concertDate = newDate ? new Date(newDate).getTime() : undefined
-    await onCreateUserList(newName.trim(), newType, concertDate)
-    setNewName(''); setNewDate(''); setShowNewList(false); setCreating(false)
   }
 
   function getListSongs(listId: string): Song[] {
@@ -875,38 +787,13 @@ function ListsTab({
 
       {/* New list form */}
       {showNewList ? (
-        <div className="rounded-2xl border border-border bg-bg-soft p-4">
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            {(['concert', 'standard'] as UserListType[]).map((t) => (
-              <button key={t} type="button" onClick={() => setNewType(t)}
-                className={`rounded-xl border px-3 py-3 text-left transition-colors ${newType === t ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-dim hover:text-text'}`}>
-                <p className="text-base">{t === 'concert' ? '🎭' : '🎵'}</p>
-                <p className="mt-1 text-sm font-medium">{t === 'concert' ? 'Concert' : 'Standard'}</p>
-                <p className="text-xs opacity-70">{t === 'concert' ? 'Linked to a date' : 'Learn at will'}</p>
-              </button>
-            ))}
-          </div>
-          <input ref={newNameRef} type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !(newType === 'concert' && !newDate)) handleCreateList() }}
-            placeholder={newType === 'concert' ? 'e.g. Spring Concert 2026' : 'e.g. Favourite Folk Songs'}
-            className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
-          />
-          {newType === 'concert' && (
-            <div className="mb-3 flex items-center gap-2">
-              <label className="shrink-0 text-xs text-text-dim">Concert date *</label>
-              <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)}
-                className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent" />
-            </div>
-          )}
-          <div className="flex gap-2">
-            <button type="button" onClick={() => { setShowNewList(false); setNewName(''); setNewDate('') }}
-              className="flex-1 rounded-xl border border-border py-2 text-sm text-text-dim hover:text-text">Cancel</button>
-            <button type="button" disabled={!newName.trim() || (newType === 'concert' && !newDate) || creating} onClick={handleCreateList}
-              className="flex-[2] rounded-xl border border-accent/30 bg-accent/15 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25">
-              {creating ? 'Creating…' : 'Create list'}
-            </button>
-          </div>
-        </div>
+        <CreateListForm
+          onSave={async (name, listType, concertDate) => {
+            await onCreateUserList(name, listType, concertDate)
+            setShowNewList(false)
+          }}
+          onCancel={() => setShowNewList(false)}
+        />
       ) : (
         <button type="button" onClick={() => setShowNewList(true)}
           className="rounded-2xl border border-dashed border-border py-3 text-sm text-text-dim hover:border-accent/50 hover:text-accent">

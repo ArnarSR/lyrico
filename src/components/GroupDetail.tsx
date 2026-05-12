@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Group, GroupMember, PracticeList, UserListType } from '../types'
 import { Header, Shell } from './Shell'
+import { CreateListForm } from './CreateListForm'
 
 interface GroupDetailProps {
   group: Group
@@ -24,10 +25,6 @@ export function GroupDetail({
   const [practiceLists, setPracticeLists] = useState<PracticeList[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const [newType, setNewType] = useState<UserListType>('concert')
-  const [newName, setNewName] = useState('')
-  const [newDate, setNewDate] = useState('')
-  const [creating, setCreating] = useState(false)
   const [codeCopied, setCodeCopied] = useState(false)
   const [editingDateListId, setEditingDateListId] = useState<string | null>(null)
   const [editDateValue, setEditDateValue] = useState('')
@@ -41,21 +38,6 @@ export function GroupDetail({
       setLoading(false)
     })
   }, [group.id, onGetDetails])
-
-  async function handleCreateList(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newName.trim()) return
-    if (newType === 'concert' && !newDate) return
-    setCreating(true)
-    try {
-      const concertDate = newDate ? new Date(newDate).getTime() : undefined
-      const list = await onCreatePracticeList(group.id, newName, newType, concertDate)
-      setPracticeLists((prev) => [...prev, list])
-      setNewName(''); setNewDate(''); setShowCreateForm(false)
-    } finally {
-      setCreating(false)
-    }
-  }
 
   function startEditDate(list: PracticeList) {
     setEditingDateListId(list.id)
@@ -188,48 +170,16 @@ export function GroupDetail({
 
         {/* Create form */}
         {showCreateForm && (
-          <form onSubmit={handleCreateList} className="mb-4 rounded-2xl border border-border bg-bg-soft p-4">
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              {(['concert', 'standard'] as UserListType[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setNewType(t)}
-                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${newType === t ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-dim hover:text-text'}`}
-                >
-                  <p className="text-base">{t === 'concert' ? '🎭' : '🎵'}</p>
-                  <p className="mt-1 text-sm font-medium">{t === 'concert' ? 'Concert' : 'Standard'}</p>
-                  <p className="text-xs opacity-70">{t === 'concert' ? 'Linked to a date' : 'Learn at will'}</p>
-                </button>
-              ))}
-            </div>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder={newType === 'concert' ? 'e.g. Spring Concert 2026' : 'e.g. Warm-up Songs'}
-              autoFocus
-              className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
+          <div className="mb-4">
+            <CreateListForm
+              onSave={async (name, listType, concertDate) => {
+                const list = await onCreatePracticeList(group.id, name, listType, concertDate)
+                setPracticeLists((prev) => [...prev, list])
+                setShowCreateForm(false)
+              }}
+              onCancel={() => setShowCreateForm(false)}
             />
-            {newType === 'concert' && (
-              <div className="mb-3 flex items-center gap-2">
-                <label className="shrink-0 text-xs text-text-dim">Concert date *</label>
-                <input
-                  type="date"
-                  value={newDate}
-                  onChange={(e) => setNewDate(e.target.value)}
-                  className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent"
-                />
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={creating || !newName.trim() || (newType === 'concert' && !newDate)}
-              className="w-full rounded-xl border border-accent/30 bg-accent/15 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25"
-            >
-              {creating ? 'Creating…' : 'Create list'}
-            </button>
-          </form>
+          </div>
         )}
 
         {loading ? (
