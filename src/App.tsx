@@ -49,7 +49,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
   const {
     songs, publicSongs, userLists, listSongIds, loading: songsLoading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
-    createUserList, addSongToUserList, removeSongFromUserList,
+    createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   } = useStorage(userId)
   const {
     myGroups, allPracticeLists, loading: groupsLoading,
@@ -228,6 +228,9 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
       onToggleKnown={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isKnown: !s.isKnown }) }}
       onGetPracticeListSongs={getPracticeListSongs}
+      onCreateUserList={createUserList}
+      onUpdateUserList={updateUserList}
+      onDeleteUserList={deleteUserList}
     />
   )
 }

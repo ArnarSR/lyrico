@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Group, PracticeList, Song, UserList } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
@@ -7,7 +7,7 @@ import { CommunityTab } from './CommunityTab'
 import { GroupsTab } from './GroupsTab'
 import { FeedbackModal } from './FeedbackModal'
 
-type Tab = 'mine' | 'community' | 'groups'
+type Tab = 'practice' | 'mine' | 'groups' | 'community'
 
 interface SongLibraryProps {
   songs: Song[]
@@ -29,6 +29,9 @@ interface SongLibraryProps {
   onTogglePublic: (songId: string) => void
   onToggleKnown: (songId: string) => void
   onGetPracticeListSongs: (listId: string) => Promise<Song[]>
+  onCreateUserList: (name: string, concertDate?: number) => Promise<UserList>
+  onUpdateUserList: (listId: string, patch: { name?: string; concertDate?: number | null }) => void
+  onDeleteUserList: (listId: string) => void
 }
 
 const DAY_MS = 86_400_000
@@ -51,10 +54,10 @@ export function SongLibrary({
   songs, publicSongs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
   onOpen, onStudy, onAdd, onSignOut, onCloneSong,
   onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList, onTogglePublic, onToggleKnown,
-  onGetPracticeListSongs,
+  onGetPracticeListSongs, onCreateUserList, onUpdateUserList, onDeleteUserList,
 }: SongLibraryProps) {
   const now = useNow()
-  const [tab, setTab] = useState<Tab>('mine')
+  const [tab, setTab] = useState<Tab>('practice')
   const [showFeedback, setShowFeedback] = useState(false)
 
   const mySongIds = new Set(songs.map((s) => s.id))
@@ -68,7 +71,7 @@ export function SongLibrary({
         subtitle="Learn your lyrics by heart"
         right={
           <div className="flex items-center gap-1">
-            {tab === 'mine' && (
+            {(tab === 'practice' || tab === 'mine') && (
               <IconButton label="Add song" onClick={onAdd}>
                 <PlusIcon />
               </IconButton>
@@ -85,20 +88,20 @@ export function SongLibrary({
 
       {/* Tab bar */}
       <div className="mb-5 flex gap-1 rounded-xl border border-border bg-bg-soft p-1">
-        {([['mine', 'My Songs'], ['community', 'Community'], ['groups', 'Groups']] as [Tab, string][]).map(([t, label]) => (
+        {([['practice', 'Practice'], ['mine', 'My Songs'], ['groups', 'Groups'], ['community', 'Community']] as [Tab, string][]).map(([t, label]) => (
           <button
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`flex-1 rounded-lg py-2 text-sm transition-colors ${tab === t ? 'bg-bg-card text-accent' : 'text-text-dim hover:text-text'}`}
+            className={`flex-1 rounded-lg py-2 text-xs transition-colors ${tab === t ? 'bg-bg-card text-accent' : 'text-text-dim hover:text-text'}`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {tab === 'mine' && (
-        <MySongsTab
+      {tab === 'practice' && (
+        <PracticeTab
           songs={songs}
           groups={groups}
           allPracticeLists={allPracticeLists}
@@ -107,10 +110,22 @@ export function SongLibrary({
           now={now}
           onOpen={onOpen}
           onStudy={onStudy}
-          onAdd={onAdd}
-          onTogglePublic={onTogglePublic}
           onToggleKnown={onToggleKnown}
           onGetPracticeListSongs={onGetPracticeListSongs}
+          onCreateUserList={onCreateUserList}
+          onUpdateUserList={onUpdateUserList}
+          onDeleteUserList={onDeleteUserList}
+        />
+      )}
+
+      {tab === 'mine' && (
+        <MySongsTab
+          songs={songs}
+          now={now}
+          onOpen={onOpen}
+          onStudy={onStudy}
+          onAdd={onAdd}
+          onTogglePublic={onTogglePublic}
         />
       )}
 
@@ -137,9 +152,9 @@ export function SongLibrary({
   )
 }
 
-// ── My Songs tab ──────────────────────────────────────────────────────────────
+// ── Practice tab ──────────────────────────────────────────────────────────────
 
-interface MySongsTabProps {
+interface PracticeTabProps {
   songs: Song[]
   groups: Group[]
   allPracticeLists: PracticeList[]
@@ -148,299 +163,399 @@ interface MySongsTabProps {
   now: number
   onOpen: (id: string) => void
   onStudy: (id: string) => void
-  onAdd: () => void
-  onTogglePublic: (id: string) => void
   onToggleKnown: (id: string) => void
   onGetPracticeListSongs: (listId: string) => Promise<Song[]>
+  onCreateUserList: (name: string, concertDate?: number) => Promise<UserList>
+  onUpdateUserList: (listId: string, patch: { name?: string; concertDate?: number | null }) => void
+  onDeleteUserList: (listId: string) => void
 }
 
-function MySongsTab({
+function PracticeTab({
   songs, groups, allPracticeLists, userLists, listSongIds, now,
-  onOpen, onStudy, onAdd, onTogglePublic, onToggleKnown, onGetPracticeListSongs,
-}: MySongsTabProps) {
-  const [featuredListId, setFeaturedListId] = useState<string | null>(
-    () => localStorage.getItem('lyrico_featured_list'),
-  )
-  const [mySongsOpen, setMySongsOpen] = useState(
-    () => localStorage.getItem('lyrico_mysongs_open') !== 'false',
-  )
-  const [showPicker, setShowPicker] = useState(false)
-  const [fetchedGroupSongs, setFetchedGroupSongs] = useState<Song[]>([])
-  const [fetchingGroup, setFetchingGroup] = useState(false)
+  onOpen, onStudy, onToggleKnown, onGetPracticeListSongs,
+  onCreateUserList, onUpdateUserList,
+}: PracticeTabProps) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [fetchedSongs, setFetchedSongs] = useState<Map<string, Song[]>>(new Map())
+  const [fetchingId, setFetchingId] = useState<string | null>(null)
+  const [showNewList, setShowNewList] = useState(false)
+  const [newListName, setNewListName] = useState('')
+  const [newListDate, setNewListDate] = useState('')
+  const [creating, setCreating] = useState(false)
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
-  const featuredUserList = userLists.find((l) => l.id === featuredListId)
-  const featuredPracticeList = allPracticeLists.find((l) => l.id === featuredListId)
-  const featuredListName = featuredUserList?.name ?? featuredPracticeList?.name ?? null
-  const isGroupList = !!featuredPracticeList
-
-  // Fetch group practice list songs when selected
   useEffect(() => {
-    if (!featuredListId || !isGroupList) return
-    setFetchingGroup(true)
-    onGetPracticeListSongs(featuredListId).then((s) => {
-      setFetchedGroupSongs(s)
-      setFetchingGroup(false)
-    })
-  }, [featuredListId, isGroupList, onGetPracticeListSongs])
+    if (showNewList) nameInputRef.current?.focus()
+  }, [showNewList])
 
-  // All songs in the active list (for readiness calculation)
-  const allListSongs = useMemo(() => {
-    if (!featuredListId) return []
-    if (isGroupList) {
-      return fetchedGroupSongs.map((gs) => songs.find((s) => s.id === gs.id) ?? gs)
+  function toggleExpand(id: string) {
+    const next = expandedId === id ? null : id
+    setExpandedId(next)
+    if (next && allPracticeLists.some((l) => l.id === id) && !fetchedSongs.has(id)) {
+      setFetchingId(id)
+      onGetPracticeListSongs(id).then((s) => {
+        setFetchedSongs((prev) => new Map(prev).set(id, s))
+        setFetchingId(null)
+      })
     }
-    const ids = listSongIds.get(featuredListId) ?? new Set<string>()
-    return songs.filter((s) => ids.has(s.id))
-  }, [featuredListId, isGroupList, fetchedGroupSongs, songs, listSongIds])
-
-  // Concert readiness: known songs = 100%, others = their mastery %
-  const concertReadiness = useMemo(() => {
-    if (allListSongs.length === 0) return null
-    const total = allListSongs.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0)
-    return Math.round(total / allListSongs.length)
-  }, [allListSongs])
-
-  // Songs to show in the featured "Now Practicing" section (mastery < 100%, not marked known)
-  const practiceSongs = useMemo(() => {
-    return allListSongs.filter((s) => masteryPercent(s) < 100 && !s.isKnown)
-  }, [allListSongs])
-
-  function selectList(id: string | null) {
-    setFeaturedListId(id)
-    setShowPicker(false)
-    if (id) localStorage.setItem('lyrico_featured_list', id)
-    else localStorage.removeItem('lyrico_featured_list')
   }
 
-  function toggleMySongs() {
-    setMySongsOpen((v) => {
-      const next = !v
-      localStorage.setItem('lyrico_mysongs_open', String(next))
-      return next
-    })
+  function getListSongs(listId: string, isGroup: boolean): Song[] {
+    if (isGroup) {
+      const raw = fetchedSongs.get(listId) ?? []
+      return raw.map((gs) => songs.find((s) => s.id === gs.id) ?? gs)
+    }
+    const ids = listSongIds.get(listId) ?? new Set<string>()
+    return songs.filter((s) => ids.has(s.id))
+  }
+
+  async function handleCreateList() {
+    if (!newListName.trim()) return
+    setCreating(true)
+    const concertDate = newListDate ? new Date(newListDate).getTime() : undefined
+    await onCreateUserList(newListName.trim(), concertDate)
+    setNewListName('')
+    setNewListDate('')
+    setShowNewList(false)
+    setCreating(false)
   }
 
   const hasLists = userLists.length > 0 || allPracticeLists.length > 0
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* ── Now Practicing section ── */}
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-xs uppercase tracking-[0.15em] text-text-dim">Now practicing</h2>
-          <button
-            type="button"
-            onClick={() => setShowPicker((v) => !v)}
-            className="text-xs text-accent hover:brightness-110"
-          >
-            {featuredListId ? 'Change list' : 'Select list'}
-          </button>
+    <div className="flex flex-col gap-3">
+      {/* Personal lists */}
+      {userLists.length > 0 && (
+        <p className="text-xs uppercase tracking-[0.15em] text-text-dim">My lists</p>
+      )}
+      {userLists.map((list) => (
+        <PracticeListCard
+          key={list.id}
+          id={list.id}
+          name={list.name}
+          listSongs={getListSongs(list.id, false)}
+          concertDate={list.concertDate}
+          now={now}
+          expanded={expandedId === list.id}
+          loading={false}
+          isOwner
+          onToggleExpand={() => toggleExpand(list.id)}
+          onStudy={onStudy}
+          onOpen={onOpen}
+          onToggleKnown={onToggleKnown}
+          onSetConcertDate={(date) => onUpdateUserList(list.id, { concertDate: date })}
+        />
+      ))}
+
+      {/* Group practice lists */}
+      {allPracticeLists.length > 0 && (
+        <p className={`text-xs uppercase tracking-[0.15em] text-text-dim ${userLists.length > 0 ? 'mt-1' : ''}`}>
+          Group lists
+        </p>
+      )}
+      {allPracticeLists.map((list) => {
+        const group = groups.find((g) => g.id === list.groupId)
+        return (
+          <PracticeListCard
+            key={list.id}
+            id={list.id}
+            name={list.name}
+            subtitle={group?.name}
+            listSongs={getListSongs(list.id, true)}
+            concertDate={undefined}
+            now={now}
+            expanded={expandedId === list.id}
+            loading={fetchingId === list.id}
+            isOwner={false}
+            onToggleExpand={() => toggleExpand(list.id)}
+            onStudy={onStudy}
+            onOpen={onOpen}
+            onToggleKnown={onToggleKnown}
+            onSetConcertDate={undefined}
+          />
+        )
+      })}
+
+      {/* Empty state */}
+      {!hasLists && !showNewList && (
+        <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
+          <p className="text-text">No practice lists yet</p>
+          <p className="mt-2 text-sm text-text-dim">
+            Create a personal list or join a group to track your concert readiness.
+          </p>
         </div>
+      )}
 
-        {/* List picker */}
-        {showPicker && (
-          <div className="mb-3 rounded-2xl border border-border bg-bg-soft p-3">
-            {!hasLists ? (
-              <p className="py-2 text-sm text-text-dim">Create a personal list or join a group to get started.</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {featuredListId && (
-                  <li>
-                    <button
-                      type="button"
-                      onClick={() => selectList(null)}
-                      className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-wrong/80 hover:bg-bg-card"
-                    >
-                      Remove pinned list
-                    </button>
-                  </li>
-                )}
-                {userLists.length > 0 && (
-                  <>
-                    <p className="px-3 pt-1 text-xs text-text-dim/60">My lists</p>
-                    {userLists.map((l) => {
-                      const ids = listSongIds.get(l.id) ?? new Set<string>()
-                      const listSongs = songs.filter((s) => ids.has(s.id))
-                      const readiness = listSongs.length > 0
-                        ? Math.round(listSongs.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0) / listSongs.length)
-                        : null
-                      return (
-                        <li key={l.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectList(l.id)}
-                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm hover:bg-bg-card ${featuredListId === l.id ? 'text-accent' : 'text-text'}`}
-                          >
-                            <span>{l.name} {featuredListId === l.id && '✓'}</span>
-                            {readiness !== null && (
-                              <span className={`text-xs ${readiness < 50 ? 'text-wrong/70' : readiness < 80 ? 'text-accent/70' : 'text-correct/70'}`}>
-                                {readiness}%
-                              </span>
-                            )}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </>
-                )}
-                {allPracticeLists.length > 0 && (
-                  <>
-                    <p className="px-3 pt-2 text-xs text-text-dim/60">Group practice lists</p>
-                    {allPracticeLists.map((l) => {
-                      const group = groups.find((g) => g.id === l.groupId)
-                      return (
-                        <li key={l.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectList(l.id)}
-                            className={`w-full rounded-xl px-3 py-2.5 text-left hover:bg-bg-card ${featuredListId === l.id ? 'text-accent' : 'text-text'}`}
-                          >
-                            <p className="text-sm">{l.name} {featuredListId === l.id && '✓'}</p>
-                            {group && <p className="text-xs text-text-dim">{group.name}</p>}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </>
-                )}
-              </ul>
-            )}
+      {/* New list form */}
+      {showNewList ? (
+        <div className="rounded-2xl border border-border bg-bg-soft p-4">
+          <p className="mb-3 text-sm font-medium text-text">New list</p>
+          <input
+            ref={nameInputRef}
+            type="text"
+            value={newListName}
+            onChange={(e) => setNewListName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreateList() }}
+            placeholder="List name…"
+            className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
+          />
+          <div className="mb-3 flex items-center gap-2">
+            <label className="shrink-0 text-xs text-text-dim">Concert date</label>
+            <input
+              type="date"
+              value={newListDate}
+              onChange={(e) => setNewListDate(e.target.value)}
+              className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent"
+            />
           </div>
-        )}
-
-        {/* Concert readiness bar */}
-        {concertReadiness !== null && !fetchingGroup && (
-          <div className="mb-3 rounded-2xl border border-border bg-bg-soft px-4 py-3">
-            <div className="flex items-baseline justify-between">
-              <p className="text-xs uppercase tracking-[0.15em] text-text-dim">Concert readiness</p>
-              <p className={`text-lg font-medium ${concertReadiness < 50 ? 'text-wrong' : concertReadiness < 80 ? 'text-accent' : 'text-correct'}`}>
-                {concertReadiness}%
-              </p>
-            </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
-              <div
-                className={`h-full rounded-full transition-[width] ${concertReadiness < 50 ? 'bg-wrong/70' : concertReadiness < 80 ? 'bg-accent' : 'bg-correct'}`}
-                style={{ width: `${concertReadiness}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-text-dim">
-              {allListSongs.length} song{allListSongs.length !== 1 ? 's' : ''} · {allListSongs.filter((s) => s.isKnown).length} known · {allListSongs.filter((s) => masteryPercent(s) === 100 && !s.isKnown).length} mastered
-            </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setShowNewList(false); setNewListName(''); setNewListDate('') }}
+              className="flex-1 rounded-xl border border-border py-2 text-sm text-text-dim hover:text-text"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!newListName.trim() || creating}
+              onClick={handleCreateList}
+              className="flex-[2] rounded-xl bg-accent/15 border border-accent/30 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25"
+            >
+              {creating ? 'Creating…' : 'Create list'}
+            </button>
           </div>
-        )}
-
-        {/* Featured content */}
-        {!featuredListId ? (
-          <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-6 text-center">
-            <p className="text-sm text-text">No active practice list</p>
-            <p className="mt-1 text-xs text-text-dim">Pin one of your lists to see what still needs work.</p>
-          </div>
-        ) : fetchingGroup ? (
-          <p className="text-sm text-text-dim">Loading…</p>
-        ) : practiceSongs.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-bg-soft p-5 text-center">
-            <p className="text-2xl">🎉</p>
-            <p className="mt-2 text-sm font-medium text-text">
-              {featuredListName ? `"${featuredListName}" is fully mastered!` : 'All mastered!'}
-            </p>
-            <p className="mt-1 text-xs text-text-dim">Every song in this list is at 100%.</p>
-          </div>
-        ) : (
-          <div>
-            {featuredListName && (
-              <p className="mb-2 truncate text-sm text-text-dim">{featuredListName} · {practiceSongs.length} song{practiceSongs.length !== 1 ? 's' : ''} to work on</p>
-            )}
-            <ul className="flex flex-col gap-3">
-              {practiceSongs.map((song) => (
-                <li key={song.id}>
-                  <PracticeSongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} onToggleKnown={() => onToggleKnown(song.id)} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      {/* ── My Songs collapsible ── */}
-      <section>
+        </div>
+      ) : (
         <button
           type="button"
-          onClick={toggleMySongs}
-          className="mb-2 flex w-full items-center justify-between"
+          onClick={() => setShowNewList(true)}
+          className="rounded-2xl border border-dashed border-border py-3 text-sm text-text-dim hover:border-accent/50 hover:text-accent"
         >
-          <h2 className="text-xs uppercase tracking-[0.15em] text-text-dim">
-            My songs {songs.length > 0 && `(${songs.length})`}
-          </h2>
-          <span className="text-xs text-text-dim transition-transform" style={{ display: 'inline-block', transform: mySongsOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
-            ▾
-          </span>
+          + New list
         </button>
-
-        {mySongsOpen && (
-          songs.length === 0 ? (
-            <EmptyState onAdd={onAdd} />
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {songs.map((song) => (
-                <li key={song.id}>
-                  <SongRow
-                    song={song}
-                    now={now}
-                    onOpen={() => onOpen(song.id)}
-                    onStudy={() => onStudy(song.id)}
-                    onTogglePublic={() => onTogglePublic(song.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          )
-        )}
-      </section>
+      )}
     </div>
   )
 }
 
-// ── Song row variants ─────────────────────────────────────────────────────────
+// ── Practice list card (expandable) ──────────────────────────────────────────
 
-function PracticeSongRow({ song, now, onOpen, onStudy, onToggleKnown }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onToggleKnown: () => void }) {
-  const mastery = masteryPercent(song)
-  const concertDays = song.concertDate ? daysUntil(song.concertDate, now) : null
-  const urgent = concertDays !== null && concertDays <= 7
+interface PracticeListCardProps {
+  id: string
+  name: string
+  subtitle?: string
+  listSongs: Song[]
+  concertDate?: number
+  now: number
+  expanded: boolean
+  loading: boolean
+  isOwner: boolean
+  onToggleExpand: () => void
+  onStudy: (id: string) => void
+  onOpen: (id: string) => void
+  onToggleKnown: (id: string) => void
+  onSetConcertDate?: (date: number | null) => void
+}
+
+function PracticeListCard({
+  name, subtitle, listSongs, concertDate, now, expanded, loading, isOwner,
+  onToggleExpand, onStudy, onOpen, onToggleKnown, onSetConcertDate,
+}: PracticeListCardProps) {
+  const [editingDate, setEditingDate] = useState(false)
+  const [dateValue, setDateValue] = useState(
+    concertDate ? new Date(concertDate).toISOString().split('T')[0] : '',
+  )
+
+  useEffect(() => {
+    setDateValue(concertDate ? new Date(concertDate).toISOString().split('T')[0] : '')
+  }, [concertDate])
+
+  useEffect(() => {
+    if (!expanded) setEditingDate(false)
+  }, [expanded])
+
+  const readiness = listSongs.length > 0
+    ? Math.round(listSongs.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0) / listSongs.length)
+    : null
+
+  const daysLeft = concertDate ? daysUntil(concertDate, now) : null
+  const practiceSongs = listSongs.filter((s) => !s.isKnown && masteryPercent(s) < 100)
+  const knownCount = listSongs.filter((s) => s.isKnown).length
+  const masteredCount = listSongs.filter((s) => masteryPercent(s) === 100 && !s.isKnown).length
+  const songsPerDay = (daysLeft !== null && daysLeft > 0 && practiceSongs.length > 0)
+    ? Math.ceil(practiceSongs.length / daysLeft)
+    : null
+
+  const readinessColor = readiness === null ? '' : readiness < 50 ? 'text-wrong' : readiness < 80 ? 'text-accent' : 'text-correct'
+  const barColor = readiness === null ? '' : readiness < 50 ? 'bg-wrong/70' : readiness < 80 ? 'bg-accent' : 'bg-correct'
+  const daysColor = daysLeft === null ? '' : daysLeft <= 7 ? 'text-wrong' : daysLeft <= 30 ? 'text-accent' : 'text-text-dim'
+
+  function handleSaveDate() {
+    const d = dateValue ? new Date(dateValue).getTime() : null
+    onSetConcertDate?.(d)
+    setEditingDate(false)
+  }
 
   return (
-    <div className="rounded-2xl border border-accent/30 bg-bg-soft">
-      <button type="button" onClick={onOpen} className="block w-full px-4 pt-4 text-left">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 className="truncate text-base text-text">{song.title}</h2>
-          <span className={`shrink-0 text-sm font-medium ${mastery < 30 ? 'text-wrong' : mastery < 70 ? 'text-accent' : 'text-correct'}`}>
-            {mastery}%
-          </span>
+    <div className="overflow-hidden rounded-2xl border border-border bg-bg-soft">
+      {/* Clickable header */}
+      <button type="button" onClick={onToggleExpand} className="w-full px-4 pt-4 pb-3 text-left">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="truncate text-base text-text">{name}</h3>
+            {subtitle && <p className="text-xs text-text-dim">{subtitle}</p>}
+          </div>
+          <div className="flex shrink-0 items-center gap-2 pt-0.5">
+            {readiness !== null && (
+              <span className={`text-sm font-medium ${readinessColor}`}>{readiness}%</span>
+            )}
+            <span className="text-xs text-text-dim">{expanded ? '▾' : '▸'}</span>
+          </div>
         </div>
-        {song.composer && <p className="mt-0.5 truncate text-xs text-text-dim">{song.composer}</p>}
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
-          <div
-            className={`h-full rounded-full transition-[width] ${mastery < 30 ? 'bg-wrong/70' : mastery < 70 ? 'bg-accent' : 'bg-correct'}`}
-            style={{ width: `${mastery}%` }}
-          />
-        </div>
-        {concertDays !== null && (
-          <p className={`mt-1.5 text-xs ${urgent ? 'text-wrong' : 'text-text-dim'}`}>
-            {urgent ? '⚠ ' : ''}Concert in {Math.max(0, concertDays)}d
-          </p>
+
+        {/* Progress bar */}
+        {readiness !== null && (
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
+            <div
+              className={`h-full rounded-full transition-[width] ${barColor}`}
+              style={{ width: `${readiness}%` }}
+            />
+          </div>
         )}
+
+        {/* Stats row */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+          {daysLeft !== null && (
+            <span className={daysColor}>
+              🗓 {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Concert today!' : 'Concert passed'}
+            </span>
+          )}
+          {songsPerDay !== null && (
+            <span className="text-text-dim">{songsPerDay} song{songsPerDay !== 1 ? 's' : ''}/day to be ready</span>
+          )}
+          {listSongs.length > 0 && (
+            <span className="text-text-dim/60">
+              {listSongs.length} song{listSongs.length !== 1 ? 's' : ''} · {knownCount} known · {masteredCount} mastered
+            </span>
+          )}
+        </div>
       </button>
-      <div className="mt-3 flex border-t border-border">
-        <button type="button" onClick={onToggleKnown} className="flex-1 py-3 text-sm text-text-dim hover:text-correct">
-          Know it ✓
-        </button>
-        <div className="w-px bg-border" />
-        <button type="button" onClick={onStudy} className="flex-[2] py-3 text-sm text-accent hover:brightness-110">
-          Study now
-        </button>
-      </div>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="border-t border-border">
+          {loading ? (
+            <p className="px-4 py-4 text-sm text-text-dim">Loading…</p>
+          ) : practiceSongs.length === 0 && listSongs.length > 0 ? (
+            <div className="px-4 py-5 text-center">
+              <p className="text-xl">🎉</p>
+              <p className="mt-1 text-sm text-text">All songs mastered!</p>
+              <p className="text-xs text-text-dim">Every song in this list is at 100%.</p>
+            </div>
+          ) : listSongs.length === 0 ? (
+            <p className="px-4 py-4 text-sm text-text-dim">No songs in this list yet.</p>
+          ) : (
+            <ul>
+              {practiceSongs.map((song) => {
+                const mastery = masteryPercent(song)
+                const mColor = mastery < 30 ? 'text-wrong' : mastery < 70 ? 'text-accent' : 'text-correct'
+                return (
+                  <li key={song.id} className="flex items-center justify-between border-b border-border/40 px-4 py-3 last:border-b-0">
+                    <button type="button" onClick={() => onOpen(song.id)} className="min-w-0 text-left">
+                      <p className="truncate text-sm text-text">{song.title}</p>
+                      <p className={`text-xs ${mColor}`}>{mastery}%</p>
+                    </button>
+                    <div className="ml-3 flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onToggleKnown(song.id)}
+                        className="rounded-full border border-border px-2.5 py-1 text-xs text-text-dim hover:border-correct/50 hover:text-correct"
+                      >
+                        Know it
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onStudy(song.id)}
+                        className="rounded-full border border-accent/30 bg-accent/15 px-2.5 py-1 text-xs text-accent hover:bg-accent/25"
+                      >
+                        Study
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+
+          {/* Concert date editor (owners only) */}
+          {isOwner && (
+            <div className="border-t border-border/40 px-4 py-3">
+              {editingDate ? (
+                <div className="flex items-center gap-2">
+                  <label className="shrink-0 text-xs text-text-dim">Concert date</label>
+                  <input
+                    type="date"
+                    value={dateValue}
+                    onChange={(e) => setDateValue(e.target.value)}
+                    className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
+                  />
+                  <button type="button" onClick={handleSaveDate} className="text-sm text-accent hover:brightness-110">Save</button>
+                  <button type="button" onClick={() => setEditingDate(false)} className="text-sm text-text-dim">✕</button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingDate(true)}
+                  className="text-xs text-text-dim/50 hover:text-text-dim"
+                >
+                  {concertDate ? `✏ Edit concert date` : '+ Set concert date'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
+
+// ── My Songs tab ──────────────────────────────────────────────────────────────
+
+interface MySongsTabProps {
+  songs: Song[]
+  now: number
+  onOpen: (id: string) => void
+  onStudy: (id: string) => void
+  onAdd: () => void
+  onTogglePublic: (id: string) => void
+}
+
+function MySongsTab({ songs, now, onOpen, onStudy, onAdd, onTogglePublic }: MySongsTabProps) {
+  return (
+    <div>
+      {songs.length === 0 ? (
+        <EmptyState onAdd={onAdd} />
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {songs.map((song) => (
+            <li key={song.id}>
+              <SongRow
+                song={song}
+                now={now}
+                onOpen={() => onOpen(song.id)}
+                onStudy={() => onStudy(song.id)}
+                onTogglePublic={() => onTogglePublic(song.id)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// ── Song row ──────────────────────────────────────────────────────────────────
 
 function SongRow({ song, now, onOpen, onStudy, onTogglePublic }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onTogglePublic: () => void }) {
   const mastery = masteryPercent(song)

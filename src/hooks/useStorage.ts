@@ -52,6 +52,7 @@ interface UserListRow {
   user_id: string
   name: string
   created_at: number
+  concert_date: number | null
 }
 
 interface UserListSongRow {
@@ -158,7 +159,7 @@ export function useStorage(userId: string) {
       setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
 
       const lists = (listsRes.data ?? []) as UserListRow[]
-      setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at })))
+      setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, concertDate: r.concert_date ?? undefined })))
 
       if (lists.length > 0) {
         const { data: lsRows } = await supabase
@@ -305,15 +306,29 @@ export function useStorage(userId: string) {
 
   // ── Personal lists ─────────────────────────────────────────────────────────
 
-  const createUserList = useCallback(async (name: string): Promise<UserList> => {
-    const row: UserListRow = { id: uid(), user_id: userId, name: name.trim(), created_at: Date.now() }
+  const createUserList = useCallback(async (name: string, concertDate?: number): Promise<UserList> => {
+    const row: UserListRow = { id: uid(), user_id: userId, name: name.trim(), created_at: Date.now(), concert_date: concertDate ?? null }
     const { error } = await supabase.from('user_lists').insert(row)
     if (error) { console.error('createUserList:', error); throw error }
-    const list: UserList = { id: row.id, userId, name: row.name, createdAt: row.created_at }
+    const list: UserList = { id: row.id, userId, name: row.name, createdAt: row.created_at, concertDate: row.concert_date ?? undefined }
     setUserLists((prev) => [...prev, list])
     setListSongIds((prev) => new Map(prev).set(list.id, new Set()))
     return list
   }, [userId])
+
+  const updateUserList = useCallback(async (listId: string, patch: { name?: string; concertDate?: number | null }) => {
+    setUserLists((prev) => prev.map((l) => {
+      if (l.id !== listId) return l
+      const updated = { ...l }
+      if (patch.name !== undefined) updated.name = patch.name
+      if ('concertDate' in patch) updated.concertDate = patch.concertDate ?? undefined
+      return updated
+    }))
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.name !== undefined) dbPatch.name = patch.name.trim()
+    if ('concertDate' in patch) dbPatch.concert_date = patch.concertDate ?? null
+    await supabase.from('user_lists').update(dbPatch).eq('id', listId)
+  }, [])
 
   const deleteUserList = useCallback(async (listId: string) => {
     setUserLists((prev) => prev.filter((l) => l.id !== listId))
@@ -347,6 +362,6 @@ export function useStorage(userId: string) {
   return {
     songs, publicSongs, userLists, listSongIds, loading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
-    createUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
+    createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   }
 }

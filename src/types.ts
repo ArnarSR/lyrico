@@ -92,4 +92,5 @@ export interface UserList {
   userId: string
   name: string
   createdAt: number
+  concertDate?: number // epoch ms
 }
