@@ -16,6 +16,7 @@ interface SongStatsProps {
   onStanzaDrill: () => void
   onTest: () => void
   onDelete: () => void
+  onEditLyrics: () => void
   onTogglePublic: () => void
   onToggleKnown: () => void
   onAddToPracticeList: (listId: string) => void
@@ -28,7 +29,7 @@ const DAY_MS = 86_400_000
 
 export function SongStats({
   song, allPracticeLists, userLists, listSongIds,
-  onBack, onStudy, onStudyVerse, onStanzaDrill, onTest, onDelete,
+  onBack, onStudy, onStudyVerse, onStanzaDrill, onTest, onDelete, onEditLyrics,
   onTogglePublic, onToggleKnown, onAddToPracticeList, onAddToUserList, onRemoveFromUserList, onCreateUserList,
 }: SongStatsProps) {
   const now = useNow()
@@ -263,17 +264,26 @@ export function SongStats({
         </ol>
       </section>
 
-      <button
-        type="button"
-        onClick={() => {
-          if (confirm(`Delete "${song.title}"? This cannot be undone.`)) {
-            onDelete()
-          }
-        }}
-        className="mt-8 self-center text-sm text-wrong/80 hover:text-wrong"
-      >
-        Delete song
-      </button>
+      <div className="mt-8 flex flex-col items-center gap-3">
+        <button
+          type="button"
+          onClick={onEditLyrics}
+          className="text-sm text-text-dim hover:text-text"
+        >
+          ✏ Edit lyrics
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm(`Delete "${song.title}"? This cannot be undone.`)) {
+              onDelete()
+            }
+          }}
+          className="text-sm text-wrong/80 hover:text-wrong"
+        >
+          Delete song
+        </button>
+      </div>
     </Shell>
   )
 }

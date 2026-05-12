@@ -362,9 +362,62 @@ export function useStorage(userId: string) {
     await supabase.from('user_list_songs').delete().eq('list_id', listId).eq('song_id', songId)
   }, [])
 
+  /**
+   * Replace the lines of a song.
+   *
+   * Each entry can either reference an existing card (by id) to preserve its
+   * SM-2 progress, or omit id to create a brand-new card.
+   * Cards whose ids are no longer present are deleted.
+   * The song's raw `lyrics` field is regenerated from the new lines.
+   */
+  const editSongLines = useCallback(async (
+    songId: string,
+    newLines: { id?: string; text: string }[],
+  ) => {
+    const song = songs.find((s) => s.id === songId)
+    if (!song) return
+
+    const existingById = new Map(song.cards.map((c) => [c.id, c]))
+    const now = Date.now()
+
+    // Build updated card list, preserving SM-2 state for existing lines
+    const updatedCards: Card[] = newLines.map((line, i) => {
+      if (line.id && existingById.has(line.id)) {
+        const existing = existingById.get(line.id)!
+        return { ...existing, lineIndex: i, text: line.text }
+      }
+      return makeCard(uid(), i, line.text, now)
+    })
+
+    // Cards no longer referenced → delete from DB
+    const keptIds = new Set(updatedCards.map((c) => c.id))
+    const deletedIds = song.cards.map((c) => c.id).filter((id) => !keptIds.has(id))
+
+    // Reconstruct the lyrics string from the new lines
+    const newLyrics = newLines.map((l) => l.text).join('\n')
+
+    // Optimistic local update
+    setSongs((prev) => prev.map((s) =>
+      s.id === songId ? { ...s, lyrics: newLyrics, cards: updatedCards } : s,
+    ))
+
+    // Persist — run in parallel
+    await Promise.all([
+      supabase.from('songs').update({ lyrics: newLyrics }).eq('id', songId)
+        .then(({ error }) => { if (error) console.error('editSongLines lyrics:', error) }),
+      supabase.from('cards').upsert(updatedCards.map((c) => cardToRow(c, songId, userId)))
+        .then(({ error }) => { if (error) console.error('editSongLines upsert:', error) }),
+      deletedIds.length > 0
+        ? supabase.from('cards').delete().in('id', deletedIds)
+            .then(({ error }) => { if (error) console.error('editSongLines delete:', error) })
+        : Promise.resolve(),
+    ])
+  }, [songs, userId])
+
   return {
     songs, publicSongs, userLists, listSongIds, loading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
+    editSongLines,
     createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   }
 }

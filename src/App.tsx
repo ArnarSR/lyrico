@@ -12,6 +12,7 @@ import { TestSession } from './components/TestSession'
 import { SongStats } from './components/SongStats'
 import { GroupDetail } from './components/GroupDetail'
 import { PracticeListDetail } from './components/PracticeListDetail'
+import { EditLyrics } from './components/EditLyrics'
 import { getStanzaLineRange } from './lib/stanzas'
 import type { Group, PracticeList } from './types'
 
@@ -22,6 +23,7 @@ type View =
   | { name: 'study'; songId: string; stanzaIdx?: number }
   | { name: 'stanza'; songId: string }
   | { name: 'test'; songId: string }
+  | { name: 'edit-lyrics'; songId: string }
   | { name: 'group'; group: Group }
   | { name: 'practice-list'; list: PracticeList }
 
@@ -49,6 +51,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
   const {
     songs, userLists, listSongIds, loading: songsLoading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
+    editSongLines,
     createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   } = useStorage(userId)
   const {
@@ -159,6 +162,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onStudyVerse={(stanzaIdx) => setView({ name: 'study', songId: song.id, stanzaIdx })}
         onStanzaDrill={() => setView({ name: 'stanza', songId: song.id })}
         onTest={() => setView({ name: 'test', songId: song.id })}
+        onEditLyrics={() => setView({ name: 'edit-lyrics', songId: song.id })}
         onDelete={() => {
           deleteSong(song.id)
           setView({ name: 'library' })
@@ -169,6 +173,21 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onAddToUserList={(listId) => addSongToUserList(listId, song.id)}
         onRemoveFromUserList={(listId) => removeSongFromUserList(listId, song.id)}
         onCreateUserList={(name) => createUserList(name, 'standard')}
+      />
+    )
+  }
+
+  if (view.name === 'edit-lyrics') {
+    const song = getSong(view.songId)
+    if (!song) return null
+    return (
+      <EditLyrics
+        song={song}
+        onSave={async (lines) => {
+          await editSongLines(song.id, lines)
+          setView({ name: 'stats', songId: song.id })
+        }}
+        onCancel={() => setView({ name: 'stats', songId: view.songId })}
       />
     )
   }
