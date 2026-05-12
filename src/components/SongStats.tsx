@@ -255,13 +255,26 @@ export function SongStats({
       {/* Lines */}
       <section className="mt-6">
         <h2 className="mb-2 text-xs uppercase tracking-[0.15em] text-text-dim">Lines</h2>
-        <ol className="flex flex-col gap-2">
-          {song.cards.map((c, i) => (
-            <li key={c.id}>
-              <LineRow card={c} index={i} now={now} />
-            </li>
-          ))}
-        </ol>
+        {song.cards.length === 0 ? (
+          <button
+            type="button"
+            onClick={onEditLyrics}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-6 text-sm text-text-dim hover:border-accent/50 hover:text-accent"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add lines
+          </button>
+        ) : (
+          <ol className="flex flex-col gap-2">
+            {song.cards.map((c, i) => (
+              <li key={c.id}>
+                <LineRow card={c} index={i} now={now} />
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
 
       <div className="mt-8 flex flex-col items-center gap-3">
