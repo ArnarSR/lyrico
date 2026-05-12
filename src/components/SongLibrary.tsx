@@ -25,6 +25,7 @@ interface SongLibraryProps {
   onCreateGroup: (name: string, description?: string) => Promise<unknown>
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
   onAddToPracticeList: (song: Song, listId: string) => void
+  onTogglePublic: (songId: string) => void
 }
 
 const DAY_MS = 86_400_000
@@ -48,7 +49,7 @@ function formatRelative(now: number, ts?: number): string {
 export function SongLibrary({
   songs, publicSongs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
   onOpen, onStudy, onAdd, onSignOut, onCloneSong,
-  onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList,
+  onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList, onTogglePublic,
 }: SongLibraryProps) {
   const now = useNow()
   const [tab, setTab] = useState<Tab>('mine')
@@ -132,7 +133,7 @@ export function SongLibrary({
             <ul className="flex flex-col gap-3">
               {visibleSongs.map((song) => (
                 <li key={song.id}>
-                  <SongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} />
+                  <SongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} onTogglePublic={() => onTogglePublic(song.id)} />
                 </li>
               ))}
             </ul>
@@ -163,7 +164,7 @@ export function SongLibrary({
   )
 }
 
-function SongRow({ song, now, onOpen, onStudy }: { song: Song; now: number; onOpen: () => void; onStudy: () => void }) {
+function SongRow({ song, now, onOpen, onStudy, onTogglePublic }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onTogglePublic: () => void }) {
   const mastery = masteryPercent(song)
   const concertDays = song.concertDate ? daysUntil(song.concertDate, now) : null
   const concertUrgent = concertDays !== null && concertDays <= 7
@@ -192,6 +193,10 @@ function SongRow({ song, now, onOpen, onStudy }: { song: Song; now: number; onOp
       </button>
       <div className="mt-3 flex border-t border-border">
         <button type="button" onClick={onOpen} className="flex-1 py-3 text-sm text-text-dim hover:text-text">Details</button>
+        <div className="w-px bg-border" />
+        <button type="button" onClick={onTogglePublic} className={`flex-1 py-3 text-sm ${song.isPublic ? 'text-accent' : 'text-text-dim hover:text-text'}`}>
+          {song.isPublic ? 'Shared ✓' : 'Share'}
+        </button>
         <div className="w-px bg-border" />
         <button type="button" onClick={onStudy} className="flex-1 py-3 text-sm text-accent hover:brightness-110">Study</button>
       </div>
