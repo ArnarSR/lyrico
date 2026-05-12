@@ -23,7 +23,14 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
   )
   const [saving, setSaving] = useState(false)
   const [focusKey, setFocusKey] = useState<string | null>(null)
+  const [showPaste, setShowPaste] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const pasteRef = useRef<HTMLTextAreaElement>(null)
   const inputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map())
+
+  useEffect(() => {
+    if (showPaste) pasteRef.current?.focus()
+  }, [showPaste])
 
   // Focus the row whose key matches focusKey
   useEffect(() => {
@@ -46,6 +53,20 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
       const next = r.filter((row) => row.key !== key)
       return next.length > 0 ? next : r // never allow empty
     })
+  }
+
+  function appendPasted() {
+    const newRows: Row[] = pasteText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+      .map((text) => ({ key: genKey(), text }))
+    if (newRows.length === 0) return
+    setRows((r) => [...r, ...newRows])
+    setPasteText('')
+    setShowPaste(false)
+    // Focus the first newly added row
+    setFocusKey(newRows[0].key)
   }
 
   function insertAfter(afterKey: string | null) {
@@ -114,19 +135,29 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
       )}
 
       {/* Empty state */}
-      {rows.length === 0 && (
+      {rows.length === 0 && !showPaste && (
         <div className="mt-8 flex flex-col items-center gap-4">
           <p className="text-text-dim">This song has no lines yet.</p>
-          <button
-            type="button"
-            onClick={() => insertAfter(null)}
-            className="flex items-center gap-2 rounded-full border border-accent bg-accent/15 px-5 py-2.5 text-sm text-accent hover:bg-accent/25"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Add first line
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => insertAfter(null)}
+              className="flex items-center gap-2 rounded-full border border-border px-4 py-2.5 text-sm text-text-dim hover:border-accent/50 hover:text-accent"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add line
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPaste(true)}
+              className="flex items-center gap-2 rounded-full border border-accent bg-accent/15 px-4 py-2.5 text-sm text-accent hover:bg-accent/25"
+            >
+              <PasteIcon />
+              Paste lyrics
+            </button>
+          </div>
         </div>
       )}
 
@@ -193,6 +224,49 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
         ))}
       </ol>
 
+      {/* Paste panel */}
+      {showPaste ? (
+        <div className="mt-4 rounded-2xl border border-border bg-bg-soft p-4">
+          <p className="mb-2 text-xs uppercase tracking-[0.15em] text-text-dim">Paste lyrics</p>
+          <textarea
+            ref={pasteRef}
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            rows={6}
+            placeholder={"Paste a verse or the full song here…\nOne line per row."}
+            className="w-full resize-y rounded-xl border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-text placeholder:text-text-dim/40 focus:border-accent focus:outline-none"
+          />
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setShowPaste(false); setPasteText('') }}
+              className="flex-1 rounded-xl border border-border py-2 text-sm text-text-dim hover:text-text"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={appendPasted}
+              disabled={pasteText.trim().length === 0}
+              className="flex-[2] rounded-xl border border-accent/30 bg-accent/15 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25"
+            >
+              {rows.length === 0 ? 'Set lyrics' : 'Append lines'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        rows.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowPaste(true)}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-3 text-sm text-text-dim hover:border-accent/50 hover:text-accent"
+          >
+            <PasteIcon />
+            Paste verse or lyrics
+          </button>
+        )
+      )}
+
       {/* Bottom save for long songs */}
       <div className="mt-6 flex gap-3">
         <button
@@ -229,6 +303,16 @@ function InsertButton({ onClick }: { onClick: () => void }) {
       </button>
       <div className="h-px flex-1 bg-border/30 opacity-0 group-hover:opacity-100" />
     </div>
+  )
+}
+
+function PasteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="2" width="6" height="4" rx="1" />
+      <path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2" />
+      <path d="M12 11v6M9 14h6" />
+    </svg>
   )
 }
 
