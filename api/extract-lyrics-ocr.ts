@@ -11,6 +11,17 @@ Rules:
 - If there are multiple verses stacked under the same notes, output each verse separately, labelled "Vers 1:", "Vers 2:", etc.
 - If no lyrics are found, reply with exactly: NO_LYRICS`
 
+// btoa(String.fromCharCode(...bigArray)) overflows the call stack for large files
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunk = 8192
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
 export default async function handler(request: Request) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { headers: cors })
@@ -34,11 +45,9 @@ export default async function handler(request: Request) {
     return json({ error: `Unsupported file type: ${file.type}` }, 400)
   }
 
-  // Convert file to base64
-  const buffer = await file.arrayBuffer()
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
-
+  const base64 = arrayBufferToBase64(await file.arrayBuffer())
   const isImage = file.type.startsWith('image/')
+
   const contentBlock = isImage
     ? { type: 'image', source: { type: 'base64', media_type: file.type, data: base64 } }
     : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
@@ -50,10 +59,11 @@ export default async function handler(request: Request) {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-7',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2048,
         messages: [{
           role: 'user',
@@ -70,7 +80,14 @@ export default async function handler(request: Request) {
 
   if (!result.ok) {
     const body = await result.text()
-    return json({ error: `Anthropic API error ${result.status}: ${body}` }, 502)
+    // Surface the actual Anthropic error message
+    try {
+      const parsed = JSON.parse(body) as { error?: { message?: string } }
+      const msg = parsed?.error?.message ?? body
+      return json({ error: msg }, 502)
+    } catch {
+      return json({ error: body }, 502)
+    }
   }
 
   const data = await result.json() as { content: { type: string; text: string }[] }
