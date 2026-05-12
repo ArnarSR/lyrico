@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Group, PracticeList, Song, UserList } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
@@ -26,13 +26,12 @@ interface SongLibraryProps {
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
   onAddToPracticeList: (song: Song, listId: string) => void
   onTogglePublic: (songId: string) => void
+  onGetPracticeListSongs: (listId: string) => Promise<Song[]>
 }
 
 const DAY_MS = 86_400_000
 
-function daysUntil(ts: number, now: number): number {
-  return Math.ceil((ts - now) / DAY_MS)
-}
+function daysUntil(ts: number, now: number) { return Math.ceil((ts - now) / DAY_MS) }
 
 function formatRelative(now: number, ts?: number): string {
   if (!ts) return 'never'
@@ -50,17 +49,12 @@ export function SongLibrary({
   songs, publicSongs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
   onOpen, onStudy, onAdd, onSignOut, onCloneSong,
   onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList, onTogglePublic,
+  onGetPracticeListSongs,
 }: SongLibraryProps) {
   const now = useNow()
   const [tab, setTab] = useState<Tab>('mine')
-  const [selectedList, setSelectedList] = useState<string | null>(null)
 
   const mySongIds = new Set(songs.map((s) => s.id))
-
-  // Filter songs when a list is selected
-  const visibleSongs = selectedList
-    ? songs.filter((s) => listSongIds.get(selectedList)?.has(s.id))
-    : songs
 
   return (
     <Shell>
@@ -96,49 +90,19 @@ export function SongLibrary({
       </div>
 
       {tab === 'mine' && (
-        <>
-          {/* List filter strip */}
-          {userLists.length > 0 && (
-            <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-              <button
-                type="button"
-                onClick={() => setSelectedList(null)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition-colors ${!selectedList ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-dim hover:text-text'}`}
-              >
-                All
-              </button>
-              {userLists.map((list) => (
-                <button
-                  key={list.id}
-                  type="button"
-                  onClick={() => setSelectedList(selectedList === list.id ? null : list.id)}
-                  className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedList === list.id ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-dim hover:text-text'}`}
-                >
-                  {list.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {visibleSongs.length === 0 ? (
-            selectedList ? (
-              <div className="mt-6 rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
-                <p className="text-text">No songs in this list</p>
-                <p className="mt-2 text-sm text-text-dim">Open a song and add it to this list from the details page.</p>
-              </div>
-            ) : (
-              <EmptyState onAdd={onAdd} />
-            )
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {visibleSongs.map((song) => (
-                <li key={song.id}>
-                  <SongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} onTogglePublic={() => onTogglePublic(song.id)} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+        <MySongsTab
+          songs={songs}
+          groups={groups}
+          allPracticeLists={allPracticeLists}
+          userLists={userLists}
+          listSongIds={listSongIds}
+          now={now}
+          onOpen={onOpen}
+          onStudy={onStudy}
+          onAdd={onAdd}
+          onTogglePublic={onTogglePublic}
+          onGetPracticeListSongs={onGetPracticeListSongs}
+        />
       )}
 
       {tab === 'community' && (
@@ -161,6 +125,264 @@ export function SongLibrary({
         />
       )}
     </Shell>
+  )
+}
+
+// ── My Songs tab ──────────────────────────────────────────────────────────────
+
+interface MySongsTabProps {
+  songs: Song[]
+  groups: Group[]
+  allPracticeLists: PracticeList[]
+  userLists: UserList[]
+  listSongIds: Map<string, Set<string>>
+  now: number
+  onOpen: (id: string) => void
+  onStudy: (id: string) => void
+  onAdd: () => void
+  onTogglePublic: (id: string) => void
+  onGetPracticeListSongs: (listId: string) => Promise<Song[]>
+}
+
+function MySongsTab({
+  songs, groups, allPracticeLists, userLists, listSongIds, now,
+  onOpen, onStudy, onAdd, onTogglePublic, onGetPracticeListSongs,
+}: MySongsTabProps) {
+  const [featuredListId, setFeaturedListId] = useState<string | null>(
+    () => localStorage.getItem('lyrico_featured_list'),
+  )
+  const [mySongsOpen, setMySongsOpen] = useState(
+    () => localStorage.getItem('lyrico_mysongs_open') !== 'false',
+  )
+  const [showPicker, setShowPicker] = useState(false)
+  const [fetchedGroupSongs, setFetchedGroupSongs] = useState<Song[]>([])
+  const [fetchingGroup, setFetchingGroup] = useState(false)
+
+  const featuredUserList = userLists.find((l) => l.id === featuredListId)
+  const featuredPracticeList = allPracticeLists.find((l) => l.id === featuredListId)
+  const featuredListName = featuredUserList?.name ?? featuredPracticeList?.name ?? null
+  const isGroupList = !!featuredPracticeList
+
+  // Fetch group practice list songs when selected
+  useEffect(() => {
+    if (!featuredListId || !isGroupList) return
+    setFetchingGroup(true)
+    onGetPracticeListSongs(featuredListId).then((s) => {
+      setFetchedGroupSongs(s)
+      setFetchingGroup(false)
+    })
+  }, [featuredListId, isGroupList, onGetPracticeListSongs])
+
+  // Songs to show in the featured "Now Practicing" section (mastery < 100%)
+  const practiceSongs = useMemo(() => {
+    if (!featuredListId) return []
+    if (isGroupList) {
+      // Prefer user's own library copy (has mastery data) over the group song
+      return fetchedGroupSongs
+        .map((gs) => songs.find((s) => s.id === gs.id) ?? gs)
+        .filter((s) => masteryPercent(s) < 100)
+    }
+    const ids = listSongIds.get(featuredListId) ?? new Set<string>()
+    return songs.filter((s) => ids.has(s.id) && masteryPercent(s) < 100)
+  }, [featuredListId, isGroupList, fetchedGroupSongs, songs, listSongIds])
+
+  function selectList(id: string | null) {
+    setFeaturedListId(id)
+    setShowPicker(false)
+    if (id) localStorage.setItem('lyrico_featured_list', id)
+    else localStorage.removeItem('lyrico_featured_list')
+  }
+
+  function toggleMySongs() {
+    setMySongsOpen((v) => {
+      const next = !v
+      localStorage.setItem('lyrico_mysongs_open', String(next))
+      return next
+    })
+  }
+
+  const hasLists = userLists.length > 0 || allPracticeLists.length > 0
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* ── Now Practicing section ── */}
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-xs uppercase tracking-[0.15em] text-text-dim">Now practicing</h2>
+          <button
+            type="button"
+            onClick={() => setShowPicker((v) => !v)}
+            className="text-xs text-accent hover:brightness-110"
+          >
+            {featuredListId ? 'Change list' : 'Select list'}
+          </button>
+        </div>
+
+        {/* List picker */}
+        {showPicker && (
+          <div className="mb-3 rounded-2xl border border-border bg-bg-soft p-3">
+            {!hasLists ? (
+              <p className="py-2 text-sm text-text-dim">Create a personal list or join a group to get started.</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {featuredListId && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => selectList(null)}
+                      className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-wrong/80 hover:bg-bg-card"
+                    >
+                      Remove pinned list
+                    </button>
+                  </li>
+                )}
+                {userLists.length > 0 && (
+                  <>
+                    <p className="px-3 pt-1 text-xs text-text-dim/60">My lists</p>
+                    {userLists.map((l) => (
+                      <li key={l.id}>
+                        <button
+                          type="button"
+                          onClick={() => selectList(l.id)}
+                          className={`w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-bg-card ${featuredListId === l.id ? 'text-accent' : 'text-text'}`}
+                        >
+                          {l.name} {featuredListId === l.id && '✓'}
+                        </button>
+                      </li>
+                    ))}
+                  </>
+                )}
+                {allPracticeLists.length > 0 && (
+                  <>
+                    <p className="px-3 pt-2 text-xs text-text-dim/60">Group practice lists</p>
+                    {allPracticeLists.map((l) => {
+                      const group = groups.find((g) => g.id === l.groupId)
+                      return (
+                        <li key={l.id}>
+                          <button
+                            type="button"
+                            onClick={() => selectList(l.id)}
+                            className={`w-full rounded-xl px-3 py-2.5 text-left hover:bg-bg-card ${featuredListId === l.id ? 'text-accent' : 'text-text'}`}
+                          >
+                            <p className="text-sm">{l.name} {featuredListId === l.id && '✓'}</p>
+                            {group && <p className="text-xs text-text-dim">{group.name}</p>}
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </>
+                )}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Featured content */}
+        {!featuredListId ? (
+          <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-6 text-center">
+            <p className="text-sm text-text">No active practice list</p>
+            <p className="mt-1 text-xs text-text-dim">Pin one of your lists to see what still needs work.</p>
+          </div>
+        ) : fetchingGroup ? (
+          <p className="text-sm text-text-dim">Loading…</p>
+        ) : practiceSongs.length === 0 ? (
+          <div className="rounded-2xl border border-border bg-bg-soft p-5 text-center">
+            <p className="text-2xl">🎉</p>
+            <p className="mt-2 text-sm font-medium text-text">
+              {featuredListName ? `"${featuredListName}" is fully mastered!` : 'All mastered!'}
+            </p>
+            <p className="mt-1 text-xs text-text-dim">Every song in this list is at 100%.</p>
+          </div>
+        ) : (
+          <div>
+            {featuredListName && (
+              <p className="mb-2 truncate text-sm text-text-dim">{featuredListName} · {practiceSongs.length} song{practiceSongs.length !== 1 ? 's' : ''} to work on</p>
+            )}
+            <ul className="flex flex-col gap-3">
+              {practiceSongs.map((song) => (
+                <li key={song.id}>
+                  <PracticeSongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
+      {/* ── My Songs collapsible ── */}
+      <section>
+        <button
+          type="button"
+          onClick={toggleMySongs}
+          className="mb-2 flex w-full items-center justify-between"
+        >
+          <h2 className="text-xs uppercase tracking-[0.15em] text-text-dim">
+            My songs {songs.length > 0 && `(${songs.length})`}
+          </h2>
+          <span className="text-xs text-text-dim transition-transform" style={{ display: 'inline-block', transform: mySongsOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+            ▾
+          </span>
+        </button>
+
+        {mySongsOpen && (
+          songs.length === 0 ? (
+            <EmptyState onAdd={onAdd} />
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {songs.map((song) => (
+                <li key={song.id}>
+                  <SongRow
+                    song={song}
+                    now={now}
+                    onOpen={() => onOpen(song.id)}
+                    onStudy={() => onStudy(song.id)}
+                    onTogglePublic={() => onTogglePublic(song.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ── Song row variants ─────────────────────────────────────────────────────────
+
+function PracticeSongRow({ song, now, onOpen, onStudy }: { song: Song; now: number; onOpen: () => void; onStudy: () => void }) {
+  const mastery = masteryPercent(song)
+  const concertDays = song.concertDate ? daysUntil(song.concertDate, now) : null
+  const urgent = concertDays !== null && concertDays <= 7
+
+  return (
+    <div className="rounded-2xl border border-accent/30 bg-bg-soft">
+      <button type="button" onClick={onOpen} className="block w-full px-4 pt-4 text-left">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="truncate text-base text-text">{song.title}</h2>
+          <span className={`shrink-0 text-sm font-medium ${mastery < 30 ? 'text-wrong' : mastery < 70 ? 'text-accent' : 'text-correct'}`}>
+            {mastery}%
+          </span>
+        </div>
+        {song.composer && <p className="mt-0.5 truncate text-xs text-text-dim">{song.composer}</p>}
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
+          <div
+            className={`h-full rounded-full transition-[width] ${mastery < 30 ? 'bg-wrong/70' : mastery < 70 ? 'bg-accent' : 'bg-correct'}`}
+            style={{ width: `${mastery}%` }}
+          />
+        </div>
+        {concertDays !== null && (
+          <p className={`mt-1.5 text-xs ${urgent ? 'text-wrong' : 'text-text-dim'}`}>
+            {urgent ? '⚠ ' : ''}Concert in {Math.max(0, concertDays)}d
+          </p>
+        )}
+      </button>
+      <div className="mt-3 flex border-t border-border">
+        <button type="button" onClick={onStudy} className="flex-1 py-3 text-sm text-accent hover:brightness-110">
+          Study now
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -206,7 +428,7 @@ function SongRow({ song, now, onOpen, onStudy, onTogglePublic }: { song: Song; n
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="mt-10 rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
+    <div className="mt-4 rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
       <h2 className="text-xl text-text">No songs yet</h2>
       <p className="mt-2 text-sm text-text-dim">
         Paste a song's lyrics — one line per row — and Lyrico will drill you line by line until you have it memorized.

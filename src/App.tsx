@@ -193,6 +193,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onJoinGroup={joinGroup}
       onAddToPracticeList={(song, listId) => addSongToPracticeList(listId, song.id)}
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
+      onGetPracticeListSongs={getPracticeListSongs}
     />
   )
 }
