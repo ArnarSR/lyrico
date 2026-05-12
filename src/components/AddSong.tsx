@@ -154,7 +154,8 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
           {/* URL import */}
           <div className="mb-2 flex gap-2">
             <input
-              type="url"
+              type="text"
+              inputMode="url"
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
               placeholder="Import from URL…"
