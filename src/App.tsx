@@ -168,7 +168,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onAddToPracticeList={(listId) => addSongToPracticeList(listId, song.id)}
         onAddToUserList={(listId) => addSongToUserList(listId, song.id)}
         onRemoveFromUserList={(listId) => removeSongFromUserList(listId, song.id)}
-        onCreateUserList={createUserList}
+        onCreateUserList={(name) => createUserList(name, 'standard')}
       />
     )
   }
@@ -228,7 +228,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
       onToggleKnown={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isKnown: !s.isKnown }) }}
       onGetPracticeListSongs={getPracticeListSongs}
-      onCreateUserList={createUserList}
+      onCreateUserList={(name, listType, concertDate) => createUserList(name, listType, concertDate)}
       onUpdateUserList={updateUserList}
       onDeleteUserList={deleteUserList}
     />

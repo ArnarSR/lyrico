@@ -87,10 +87,13 @@ export interface PracticeList {
   createdAt: number
 }
 
+export type UserListType = 'concert' | 'standard'
+
 export interface UserList {
   id: string
   userId: string
   name: string
   createdAt: number
-  concertDate?: number // epoch ms
+  listType: UserListType
+  concertDate?: number // epoch ms — only meaningful for 'concert' lists
 }

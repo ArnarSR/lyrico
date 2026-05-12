@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Card, Song, UserList } from '../types'
+import type { Card, Song, UserList, UserListType } from '../types'
 import { uid } from '../lib/id'
 import { makeCard } from './useSM2'
 import { isSectionLabel } from '../lib/stanzas'
@@ -52,6 +52,7 @@ interface UserListRow {
   user_id: string
   name: string
   created_at: number
+  list_type: string
   concert_date: number | null
 }
 
@@ -159,7 +160,7 @@ export function useStorage(userId: string) {
       setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
 
       const lists = (listsRes.data ?? []) as UserListRow[]
-      setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, concertDate: r.concert_date ?? undefined })))
+      setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'standard', concertDate: r.concert_date ?? undefined })))
 
       if (lists.length > 0) {
         const { data: lsRows } = await supabase
@@ -306,26 +307,28 @@ export function useStorage(userId: string) {
 
   // ── Personal lists ─────────────────────────────────────────────────────────
 
-  const createUserList = useCallback(async (name: string, concertDate?: number): Promise<UserList> => {
-    const row: UserListRow = { id: uid(), user_id: userId, name: name.trim(), created_at: Date.now(), concert_date: concertDate ?? null }
+  const createUserList = useCallback(async (name: string, listType: UserListType = 'standard', concertDate?: number): Promise<UserList> => {
+    const row: UserListRow = { id: uid(), user_id: userId, name: name.trim(), created_at: Date.now(), list_type: listType, concert_date: concertDate ?? null }
     const { error } = await supabase.from('user_lists').insert(row)
     if (error) { console.error('createUserList:', error); throw error }
-    const list: UserList = { id: row.id, userId, name: row.name, createdAt: row.created_at, concertDate: row.concert_date ?? undefined }
+    const list: UserList = { id: row.id, userId, name: row.name, createdAt: row.created_at, listType, concertDate: row.concert_date ?? undefined }
     setUserLists((prev) => [...prev, list])
     setListSongIds((prev) => new Map(prev).set(list.id, new Set()))
     return list
   }, [userId])
 
-  const updateUserList = useCallback(async (listId: string, patch: { name?: string; concertDate?: number | null }) => {
+  const updateUserList = useCallback(async (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => {
     setUserLists((prev) => prev.map((l) => {
       if (l.id !== listId) return l
       const updated = { ...l }
       if (patch.name !== undefined) updated.name = patch.name
+      if (patch.listType !== undefined) updated.listType = patch.listType
       if ('concertDate' in patch) updated.concertDate = patch.concertDate ?? undefined
       return updated
     }))
     const dbPatch: Record<string, unknown> = {}
     if (patch.name !== undefined) dbPatch.name = patch.name.trim()
+    if (patch.listType !== undefined) dbPatch.list_type = patch.listType
     if ('concertDate' in patch) dbPatch.concert_date = patch.concertDate ?? null
     await supabase.from('user_lists').update(dbPatch).eq('id', listId)
   }, [])

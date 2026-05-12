@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Group, PracticeList, Song, UserList } from '../types'
+import type { Group, PracticeList, Song, UserList, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
@@ -29,8 +29,8 @@ interface SongLibraryProps {
   onTogglePublic: (songId: string) => void
   onToggleKnown: (songId: string) => void
   onGetPracticeListSongs: (listId: string) => Promise<Song[]>
-  onCreateUserList: (name: string, concertDate?: number) => Promise<UserList>
-  onUpdateUserList: (listId: string, patch: { name?: string; concertDate?: number | null }) => void
+  onCreateUserList: (name: string, listType?: UserListType, concertDate?: number) => Promise<UserList>
+  onUpdateUserList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
   onDeleteUserList: (listId: string) => void
 }
 
@@ -165,8 +165,8 @@ interface PracticeTabProps {
   onStudy: (id: string) => void
   onToggleKnown: (id: string) => void
   onGetPracticeListSongs: (listId: string) => Promise<Song[]>
-  onCreateUserList: (name: string, concertDate?: number) => Promise<UserList>
-  onUpdateUserList: (listId: string, patch: { name?: string; concertDate?: number | null }) => void
+  onCreateUserList: (name: string, listType?: UserListType, concertDate?: number) => Promise<UserList>
+  onUpdateUserList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
   onDeleteUserList: (listId: string) => void
 }
 
@@ -179,6 +179,7 @@ function PracticeTab({
   const [fetchedSongs, setFetchedSongs] = useState<Map<string, Song[]>>(new Map())
   const [fetchingId, setFetchingId] = useState<string | null>(null)
   const [showNewList, setShowNewList] = useState(false)
+  const [newType, setNewType] = useState<UserListType>('concert')
   const [newListName, setNewListName] = useState('')
   const [newListDate, setNewListDate] = useState('')
   const [creating, setCreating] = useState(false)
@@ -211,28 +212,34 @@ function PracticeTab({
 
   async function handleCreateList() {
     if (!newListName.trim()) return
+    if (newType === 'concert' && !newListDate) return
     setCreating(true)
     const concertDate = newListDate ? new Date(newListDate).getTime() : undefined
-    await onCreateUserList(newListName.trim(), concertDate)
+    await onCreateUserList(newListName.trim(), newType, concertDate)
     setNewListName('')
     setNewListDate('')
     setShowNewList(false)
     setCreating(false)
   }
 
+  const concertLists = userLists
+    .filter((l) => l.listType === 'concert')
+    .sort((a, b) => (a.concertDate ?? Infinity) - (b.concertDate ?? Infinity))
+  const standardLists = userLists.filter((l) => l.listType === 'standard')
   const hasLists = userLists.length > 0 || allPracticeLists.length > 0
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Personal lists */}
-      {userLists.length > 0 && (
-        <p className="text-xs uppercase tracking-[0.15em] text-text-dim">My lists</p>
+
+      {/* ── Concert Repertoire ── */}
+      {(concertLists.length > 0 || allPracticeLists.length > 0) && (
+        <SectionHeader icon="🎭" label="Concert Repertoire" />
       )}
-      {userLists.map((list) => (
+      {concertLists.map((list) => (
         <PracticeListCard
           key={list.id}
-          id={list.id}
           name={list.name}
+          listType="concert"
           listSongs={getListSongs(list.id, false)}
           concertDate={list.concertDate}
           now={now}
@@ -243,24 +250,17 @@ function PracticeTab({
           onStudy={onStudy}
           onOpen={onOpen}
           onToggleKnown={onToggleKnown}
-          onSetConcertDate={(date) => onUpdateUserList(list.id, { concertDate: date })}
+          onUpdateList={(patch) => onUpdateUserList(list.id, patch)}
         />
       ))}
-
-      {/* Group practice lists */}
-      {allPracticeLists.length > 0 && (
-        <p className={`text-xs uppercase tracking-[0.15em] text-text-dim ${userLists.length > 0 ? 'mt-1' : ''}`}>
-          Group lists
-        </p>
-      )}
       {allPracticeLists.map((list) => {
         const group = groups.find((g) => g.id === list.groupId)
         return (
           <PracticeListCard
             key={list.id}
-            id={list.id}
             name={list.name}
             subtitle={group?.name}
+            listType="concert"
             listSongs={getListSongs(list.id, true)}
             concertDate={undefined}
             now={now}
@@ -271,17 +271,40 @@ function PracticeTab({
             onStudy={onStudy}
             onOpen={onOpen}
             onToggleKnown={onToggleKnown}
-            onSetConcertDate={undefined}
+            onUpdateList={undefined}
           />
         )
       })}
+
+      {/* ── Standard Repertoire ── */}
+      {standardLists.length > 0 && (
+        <SectionHeader icon="🎵" label="Standard Repertoire" />
+      )}
+      {standardLists.map((list) => (
+        <PracticeListCard
+          key={list.id}
+          name={list.name}
+          listType="standard"
+          listSongs={getListSongs(list.id, false)}
+          concertDate={undefined}
+          now={now}
+          expanded={expandedId === list.id}
+          loading={false}
+          isOwner
+          onToggleExpand={() => toggleExpand(list.id)}
+          onStudy={onStudy}
+          onOpen={onOpen}
+          onToggleKnown={onToggleKnown}
+          onUpdateList={(patch) => onUpdateUserList(list.id, patch)}
+        />
+      ))}
 
       {/* Empty state */}
       {!hasLists && !showNewList && (
         <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
           <p className="text-text">No practice lists yet</p>
           <p className="mt-2 text-sm text-text-dim">
-            Create a personal list or join a group to track your concert readiness.
+            Create a Concert list for an upcoming performance, or a Standard list for songs to learn at your own pace.
           </p>
         </div>
       )}
@@ -289,25 +312,47 @@ function PracticeTab({
       {/* New list form */}
       {showNewList ? (
         <div className="rounded-2xl border border-border bg-bg-soft p-4">
-          <p className="mb-3 text-sm font-medium text-text">New list</p>
+          {/* Type picker */}
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setNewType('concert')}
+              className={`rounded-xl border px-3 py-3 text-left transition-colors ${newType === 'concert' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-dim hover:text-text'}`}
+            >
+              <p className="text-base">🎭</p>
+              <p className="mt-1 text-sm font-medium">Concert</p>
+              <p className="text-xs opacity-70">Linked to a date</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewType('standard')}
+              className={`rounded-xl border px-3 py-3 text-left transition-colors ${newType === 'standard' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-dim hover:text-text'}`}
+            >
+              <p className="text-base">🎵</p>
+              <p className="mt-1 text-sm font-medium">Standard</p>
+              <p className="text-xs opacity-70">Learn at will</p>
+            </button>
+          </div>
           <input
             ref={nameInputRef}
             type="text"
             value={newListName}
             onChange={(e) => setNewListName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleCreateList() }}
-            placeholder="List name…"
+            onKeyDown={(e) => { if (e.key === 'Enter' && !(newType === 'concert' && !newListDate)) handleCreateList() }}
+            placeholder={newType === 'concert' ? 'e.g. Spring Concert 2026' : 'e.g. Favourite Folk Songs'}
             className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
           />
-          <div className="mb-3 flex items-center gap-2">
-            <label className="shrink-0 text-xs text-text-dim">Concert date</label>
-            <input
-              type="date"
-              value={newListDate}
-              onChange={(e) => setNewListDate(e.target.value)}
-              className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent"
-            />
-          </div>
+          {newType === 'concert' && (
+            <div className="mb-3 flex items-center gap-2">
+              <label className="shrink-0 text-xs text-text-dim">Concert date *</label>
+              <input
+                type="date"
+                value={newListDate}
+                onChange={(e) => setNewListDate(e.target.value)}
+                className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent"
+              />
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
@@ -318,9 +363,9 @@ function PracticeTab({
             </button>
             <button
               type="button"
-              disabled={!newListName.trim() || creating}
+              disabled={!newListName.trim() || (newType === 'concert' && !newListDate) || creating}
               onClick={handleCreateList}
-              className="flex-[2] rounded-xl bg-accent/15 border border-accent/30 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25"
+              className="flex-[2] rounded-xl border border-accent/30 bg-accent/15 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25"
             >
               {creating ? 'Creating…' : 'Create list'}
             </button>
@@ -339,12 +384,21 @@ function PracticeTab({
   )
 }
 
+function SectionHeader({ icon, label }: { icon: string; label: string }) {
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <span className="text-sm">{icon}</span>
+      <p className="text-xs uppercase tracking-[0.15em] text-text-dim">{label}</p>
+    </div>
+  )
+}
+
 // ── Practice list card (expandable) ──────────────────────────────────────────
 
 interface PracticeListCardProps {
-  id: string
   name: string
   subtitle?: string
+  listType: UserListType
   listSongs: Song[]
   concertDate?: number
   now: number
@@ -355,12 +409,12 @@ interface PracticeListCardProps {
   onStudy: (id: string) => void
   onOpen: (id: string) => void
   onToggleKnown: (id: string) => void
-  onSetConcertDate?: (date: number | null) => void
+  onUpdateList?: (patch: { concertDate?: number | null }) => void
 }
 
 function PracticeListCard({
-  name, subtitle, listSongs, concertDate, now, expanded, loading, isOwner,
-  onToggleExpand, onStudy, onOpen, onToggleKnown, onSetConcertDate,
+  name, subtitle, listType, listSongs, concertDate, now, expanded, loading, isOwner,
+  onToggleExpand, onStudy, onOpen, onToggleKnown, onUpdateList,
 }: PracticeListCardProps) {
   const [editingDate, setEditingDate] = useState(false)
   const [dateValue, setDateValue] = useState(
@@ -379,7 +433,7 @@ function PracticeListCard({
     ? Math.round(listSongs.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0) / listSongs.length)
     : null
 
-  const daysLeft = concertDate ? daysUntil(concertDate, now) : null
+  const daysLeft = listType === 'concert' && concertDate ? daysUntil(concertDate, now) : null
   const practiceSongs = listSongs.filter((s) => !s.isKnown && masteryPercent(s) < 100)
   const knownCount = listSongs.filter((s) => s.isKnown).length
   const masteredCount = listSongs.filter((s) => masteryPercent(s) === 100 && !s.isKnown).length
@@ -390,15 +444,16 @@ function PracticeListCard({
   const readinessColor = readiness === null ? '' : readiness < 50 ? 'text-wrong' : readiness < 80 ? 'text-accent' : 'text-correct'
   const barColor = readiness === null ? '' : readiness < 50 ? 'bg-wrong/70' : readiness < 80 ? 'bg-accent' : 'bg-correct'
   const daysColor = daysLeft === null ? '' : daysLeft <= 7 ? 'text-wrong' : daysLeft <= 30 ? 'text-accent' : 'text-text-dim'
+  const isPast = listType === 'concert' && daysLeft !== null && daysLeft < 0
 
   function handleSaveDate() {
     const d = dateValue ? new Date(dateValue).getTime() : null
-    onSetConcertDate?.(d)
+    onUpdateList?.({ concertDate: d })
     setEditingDate(false)
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-bg-soft">
+    <div className={`overflow-hidden rounded-2xl border bg-bg-soft transition-opacity ${listType === 'concert' ? 'border-accent/25' : 'border-border'} ${isPast ? 'opacity-60' : ''}`}>
       {/* Clickable header */}
       <button type="button" onClick={onToggleExpand} className="w-full px-4 pt-4 pb-3 text-left">
         <div className="flex items-start justify-between gap-2">
@@ -430,6 +485,9 @@ function PracticeListCard({
             <span className={daysColor}>
               🗓 {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Concert today!' : 'Concert passed'}
             </span>
+          )}
+          {listType === 'concert' && !concertDate && isOwner && (
+            <span className="text-wrong/70">No concert date set</span>
           )}
           {songsPerDay !== null && (
             <span className="text-text-dim">{songsPerDay} song{songsPerDay !== 1 ? 's' : ''}/day to be ready</span>
@@ -488,8 +546,8 @@ function PracticeListCard({
             </ul>
           )}
 
-          {/* Concert date editor (owners only) */}
-          {isOwner && (
+          {/* Concert date editor (concert-type owned lists only) */}
+          {isOwner && listType === 'concert' && (
             <div className="border-t border-border/40 px-4 py-3">
               {editingDate ? (
                 <div className="flex items-center gap-2">
@@ -509,7 +567,7 @@ function PracticeListCard({
                   onClick={() => setEditingDate(true)}
                   className="text-xs text-text-dim/50 hover:text-text-dim"
                 >
-                  {concertDate ? `✏ Edit concert date` : '+ Set concert date'}
+                  {concertDate ? '✏ Edit concert date' : '+ Set concert date'}
                 </button>
               )}
             </div>
