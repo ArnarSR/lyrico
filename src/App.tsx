@@ -160,6 +160,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         list={view.list}
         userId={userId}
         mySongIds={mySongIds}
+        mySongs={songs}
         onBack={() => {
           const group = myGroups.find((g) => g.id === view.list.groupId)
           if (group) setView({ name: 'group', group })
@@ -167,6 +168,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         }}
         onCloneSong={cloneSong}
         onGetSongs={getPracticeListSongs}
+        onAddSong={addSongToPracticeList}
         onRemoveSong={removeSongFromPracticeList}
       />
     )
