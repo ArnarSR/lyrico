@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { PracticeList, Song } from '../types'
+import { masteryPercent } from '../hooks/useSM2'
 import { Header, Shell } from './Shell'
 
 interface PracticeListDetailProps {
@@ -30,6 +31,18 @@ export function PracticeListDetail({
   const isOwner = list.createdBy === userId
 
   const listSongIds = new Set(songs.map((s) => s.id))
+
+  // Merge: prefer user's own mastery data over the raw list song data
+  const songsWithMastery = useMemo(
+    () => songs.map((s) => mySongs.find((ms) => ms.id === s.id) ?? s),
+    [songs, mySongs],
+  )
+
+  const concertReadiness = useMemo(() => {
+    if (songsWithMastery.length === 0) return null
+    const total = songsWithMastery.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0)
+    return Math.round(total / songsWithMastery.length)
+  }, [songsWithMastery])
 
   const pickableSongs = useMemo(() => {
     const q = search.toLowerCase()
@@ -63,6 +76,27 @@ export function PracticeListDetail({
           </button>
         }
       />
+
+      {/* Concert readiness */}
+      {!loading && concertReadiness !== null && (
+        <div className="mb-4 rounded-2xl border border-border bg-bg-soft px-4 py-3">
+          <div className="flex items-baseline justify-between">
+            <p className="text-xs uppercase tracking-[0.15em] text-text-dim">Concert readiness</p>
+            <p className={`text-lg font-medium ${concertReadiness < 50 ? 'text-wrong' : concertReadiness < 80 ? 'text-accent' : 'text-correct'}`}>
+              {concertReadiness}%
+            </p>
+          </div>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
+            <div
+              className={`h-full rounded-full transition-[width] ${concertReadiness < 50 ? 'bg-wrong/70' : concertReadiness < 80 ? 'bg-accent' : 'bg-correct'}`}
+              style={{ width: `${concertReadiness}%` }}
+            />
+          </div>
+          <p className="mt-1.5 text-xs text-text-dim">
+            {songsWithMastery.length} song{songsWithMastery.length !== 1 ? 's' : ''} · {songsWithMastery.filter((s) => s.isKnown).length} known · {songsWithMastery.filter((s) => masteryPercent(s) === 100 && !s.isKnown).length} mastered
+          </p>
+        </div>
+      )}
 
       {/* Add my songs button */}
       <div className="mb-4">

@@ -258,17 +258,29 @@ function MySongsTab({
                 {userLists.length > 0 && (
                   <>
                     <p className="px-3 pt-1 text-xs text-text-dim/60">My lists</p>
-                    {userLists.map((l) => (
-                      <li key={l.id}>
-                        <button
-                          type="button"
-                          onClick={() => selectList(l.id)}
-                          className={`w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-bg-card ${featuredListId === l.id ? 'text-accent' : 'text-text'}`}
-                        >
-                          {l.name} {featuredListId === l.id && '✓'}
-                        </button>
-                      </li>
-                    ))}
+                    {userLists.map((l) => {
+                      const ids = listSongIds.get(l.id) ?? new Set<string>()
+                      const listSongs = songs.filter((s) => ids.has(s.id))
+                      const readiness = listSongs.length > 0
+                        ? Math.round(listSongs.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0) / listSongs.length)
+                        : null
+                      return (
+                        <li key={l.id}>
+                          <button
+                            type="button"
+                            onClick={() => selectList(l.id)}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm hover:bg-bg-card ${featuredListId === l.id ? 'text-accent' : 'text-text'}`}
+                          >
+                            <span>{l.name} {featuredListId === l.id && '✓'}</span>
+                            {readiness !== null && (
+                              <span className={`text-xs ${readiness < 50 ? 'text-wrong/70' : readiness < 80 ? 'text-accent/70' : 'text-correct/70'}`}>
+                                {readiness}%
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      )
+                    })}
                   </>
                 )}
                 {allPracticeLists.length > 0 && (
