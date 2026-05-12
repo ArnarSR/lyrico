@@ -3,15 +3,13 @@ import type { Group, PracticeList, Song, UserList, UserListType } from '../types
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
-import { CommunityTab } from './CommunityTab'
 import { GroupsTab } from './GroupsTab'
 import { FeedbackModal } from './FeedbackModal'
 
-type Tab = 'practice' | 'mine' | 'groups' | 'community'
+type Tab = 'practice' | 'mine' | 'lists' | 'groups'
 
 interface SongLibraryProps {
   songs: Song[]
-  publicSongs: Song[]
   groups: Group[]
   groupsLoading: boolean
   allPracticeLists: PracticeList[]
@@ -21,17 +19,17 @@ interface SongLibraryProps {
   onStudy: (songId: string) => void
   onAdd: () => void
   onSignOut: () => void
-  onCloneSong: (song: Song) => void
   onOpenGroup: (group: Group) => void
   onCreateGroup: (name: string, description?: string) => Promise<unknown>
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
-  onAddToPracticeList: (song: Song, listId: string) => void
   onTogglePublic: (songId: string) => void
   onToggleKnown: (songId: string) => void
   onGetPracticeListSongs: (listId: string) => Promise<Song[]>
   onCreateUserList: (name: string, listType?: UserListType, concertDate?: number) => Promise<UserList>
   onUpdateUserList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
   onDeleteUserList: (listId: string) => void
+  onAddSongToUserList: (listId: string, songId: string) => Promise<void>
+  onRemoveSongFromUserList: (listId: string, songId: string) => Promise<void>
 }
 
 const DAY_MS = 86_400_000
@@ -51,16 +49,15 @@ function formatRelative(now: number, ts?: number): string {
 }
 
 export function SongLibrary({
-  songs, publicSongs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
-  onOpen, onStudy, onAdd, onSignOut, onCloneSong,
-  onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList, onTogglePublic, onToggleKnown,
+  songs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
+  onOpen, onStudy, onAdd, onSignOut,
+  onOpenGroup, onCreateGroup, onJoinGroup, onTogglePublic, onToggleKnown,
   onGetPracticeListSongs, onCreateUserList, onUpdateUserList, onDeleteUserList,
+  onAddSongToUserList, onRemoveSongFromUserList,
 }: SongLibraryProps) {
   const now = useNow()
   const [tab, setTab] = useState<Tab>('practice')
   const [showFeedback, setShowFeedback] = useState(false)
-
-  const mySongIds = new Set(songs.map((s) => s.id))
 
   return (
     <Shell>
@@ -88,7 +85,7 @@ export function SongLibrary({
 
       {/* Tab bar */}
       <div className="mb-5 flex gap-1 rounded-xl border border-border bg-bg-soft p-1">
-        {([['practice', 'Practice'], ['mine', 'My Songs'], ['groups', 'Groups'], ['community', 'Community']] as [Tab, string][]).map(([t, label]) => (
+        {([['practice', 'Practice'], ['mine', 'My Songs'], ['lists', 'Lists'], ['groups', 'Groups']] as [Tab, string][]).map(([t, label]) => (
           <button
             key={t}
             type="button"
@@ -129,13 +126,19 @@ export function SongLibrary({
         />
       )}
 
-      {tab === 'community' && (
-        <CommunityTab
-          songs={publicSongs}
-          mySongIds={mySongIds}
-          practiceLists={allPracticeLists}
-          onAddToLibrary={onCloneSong}
-          onAddToPracticeList={onAddToPracticeList}
+      {tab === 'lists' && (
+        <ListsTab
+          songs={songs}
+          userLists={userLists}
+          listSongIds={listSongIds}
+          now={now}
+          onOpen={onOpen}
+          onStudy={onStudy}
+          onCreateUserList={onCreateUserList}
+          onUpdateUserList={onUpdateUserList}
+          onDeleteUserList={onDeleteUserList}
+          onAddSongToList={onAddSongToUserList}
+          onRemoveSongFromList={onRemoveSongFromUserList}
         />
       )}
 
@@ -578,6 +581,320 @@ function PracticeListCard({
   )
 }
 
+// ── Lists tab (management) ────────────────────────────────────────────────────
+
+interface ListsTabProps {
+  songs: Song[]
+  userLists: UserList[]
+  listSongIds: Map<string, Set<string>>
+  now: number
+  onOpen: (id: string) => void
+  onStudy: (id: string) => void
+  onCreateUserList: (name: string, listType?: UserListType, concertDate?: number) => Promise<UserList>
+  onUpdateUserList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
+  onDeleteUserList: (listId: string) => void
+  onAddSongToList: (listId: string, songId: string) => Promise<void>
+  onRemoveSongFromList: (listId: string, songId: string) => Promise<void>
+}
+
+function ListsTab({
+  songs, userLists, listSongIds, now,
+  onOpen, onStudy,
+  onCreateUserList, onUpdateUserList, onDeleteUserList,
+  onAddSongToList, onRemoveSongFromList,
+}: ListsTabProps) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [addingToId, setAddingToId] = useState<string | null>(null)
+  const [addSearch, setAddSearch] = useState('')
+  const [editingDateId, setEditingDateId] = useState<string | null>(null)
+  const [dateValue, setDateValue] = useState('')
+  const [showNewList, setShowNewList] = useState(false)
+  const [newType, setNewType] = useState<UserListType>('concert')
+  const [newName, setNewName] = useState('')
+  const [newDate, setNewDate] = useState('')
+  const [creating, setCreating] = useState(false)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const newNameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { if (renamingId) renameInputRef.current?.focus() }, [renamingId])
+  useEffect(() => { if (showNewList) newNameRef.current?.focus() }, [showNewList])
+
+  function startRename(list: UserList) {
+    setRenamingId(list.id)
+    setRenameValue(list.name)
+    setExpandedId(list.id)
+  }
+
+  function saveRename(listId: string) {
+    if (renameValue.trim()) onUpdateUserList(listId, { name: renameValue.trim() })
+    setRenamingId(null)
+  }
+
+  function startEditDate(list: UserList) {
+    setEditingDateId(list.id)
+    setDateValue(list.concertDate ? new Date(list.concertDate).toISOString().split('T')[0] : '')
+    setExpandedId(list.id)
+  }
+
+  function saveDate(listId: string) {
+    const d = dateValue ? new Date(dateValue).getTime() : null
+    onUpdateUserList(listId, { concertDate: d })
+    setEditingDateId(null)
+  }
+
+  function confirmDelete(listId: string) {
+    onDeleteUserList(listId)
+    setDeletingId(null)
+    if (expandedId === listId) setExpandedId(null)
+  }
+
+  async function handleCreateList() {
+    if (!newName.trim()) return
+    if (newType === 'concert' && !newDate) return
+    setCreating(true)
+    const concertDate = newDate ? new Date(newDate).getTime() : undefined
+    await onCreateUserList(newName.trim(), newType, concertDate)
+    setNewName(''); setNewDate(''); setShowNewList(false); setCreating(false)
+  }
+
+  function getListSongs(listId: string): Song[] {
+    const ids = listSongIds.get(listId) ?? new Set<string>()
+    return songs.filter((s) => ids.has(s.id))
+  }
+
+  function getPickableSongs(listId: string): Song[] {
+    const ids = listSongIds.get(listId) ?? new Set<string>()
+    const q = addSearch.toLowerCase()
+    return songs.filter((s) => !ids.has(s.id) && (!q || s.title.toLowerCase().includes(q) || (s.composer ?? '').toLowerCase().includes(q)))
+  }
+
+  const concertLists = userLists.filter((l) => l.listType === 'concert')
+    .sort((a, b) => (a.concertDate ?? Infinity) - (b.concertDate ?? Infinity))
+  const standardLists = userLists.filter((l) => l.listType === 'standard')
+
+  function renderList(list: UserList) {
+    const listSongs = getListSongs(list.id)
+    const readiness = listSongs.length > 0
+      ? Math.round(listSongs.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0) / listSongs.length)
+      : null
+    const daysLeft = list.listType === 'concert' && list.concertDate ? daysUntil(list.concertDate, now) : null
+    const rColor = readiness === null ? '' : readiness < 50 ? 'text-wrong' : readiness < 80 ? 'text-accent' : 'text-correct'
+    const bColor = readiness === null ? '' : readiness < 50 ? 'bg-wrong/70' : readiness < 80 ? 'bg-accent' : 'bg-correct'
+    const dColor = daysLeft === null ? '' : daysLeft <= 7 ? 'text-wrong' : daysLeft <= 30 ? 'text-accent' : 'text-text-dim'
+    const expanded = expandedId === list.id
+    const isRenaming = renamingId === list.id
+    const isEditingDate = editingDateId === list.id
+    const isDeleting = deletingId === list.id
+    const isAddingTo = addingToId === list.id
+
+    return (
+      <div key={list.id} className={`overflow-hidden rounded-2xl border bg-bg-soft ${list.listType === 'concert' ? 'border-accent/25' : 'border-border'}`}>
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3">
+          <div className="flex items-start gap-2">
+            {isRenaming ? (
+              <input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveRename(list.id); if (e.key === 'Escape') setRenamingId(null) }}
+                onBlur={() => saveRename(list.id)}
+                className="min-w-0 flex-1 rounded-lg border border-accent bg-bg px-2 py-0.5 text-base text-text focus:outline-none"
+              />
+            ) : (
+              <button type="button" onClick={() => setExpandedId(expanded ? null : list.id)} className="min-w-0 flex-1 text-left">
+                <h3 className="truncate text-base text-text">{list.name}</h3>
+              </button>
+            )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {readiness !== null && (
+                <span className={`text-sm font-medium ${rColor}`}>{readiness}%</span>
+              )}
+              <button type="button" onClick={() => startRename(list)} className="rounded p-0.5 text-text-dim/50 hover:text-text-dim" title="Rename">
+                <PencilIcon />
+              </button>
+              {isDeleting ? (
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => confirmDelete(list.id)} className="text-xs text-wrong hover:brightness-110">Delete?</button>
+                  <button type="button" onClick={() => setDeletingId(null)} className="text-xs text-text-dim">✕</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setDeletingId(list.id)} className="rounded p-0.5 text-text-dim/50 hover:text-wrong" title="Delete list">
+                  <TrashIcon />
+                </button>
+              )}
+              <button type="button" onClick={() => setExpandedId(expanded ? null : list.id)} className="text-xs text-text-dim">
+                {expanded ? '▾' : '▸'}
+              </button>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          {readiness !== null && (
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
+              <div className={`h-full rounded-full transition-[width] ${bColor}`} style={{ width: `${readiness}%` }} />
+            </div>
+          )}
+
+          {/* Meta row */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-dim">
+            {daysLeft !== null && <span className={dColor}>🗓 {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Concert today!' : 'Concert passed'}</span>}
+            {list.listType === 'concert' && !list.concertDate && <span className="text-wrong/70">No concert date set</span>}
+            <span>{listSongs.length} song{listSongs.length !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+
+        {/* Expanded body */}
+        {expanded && (
+          <div className="border-t border-border">
+            {/* Concert date editor */}
+            {list.listType === 'concert' && (
+              <div className="border-b border-border/40 px-4 py-3">
+                {isEditingDate ? (
+                  <div className="flex items-center gap-2">
+                    <label className="shrink-0 text-xs text-text-dim">Concert date</label>
+                    <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)}
+                      className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent" />
+                    <button type="button" onClick={() => saveDate(list.id)} className="text-sm text-accent">Save</button>
+                    <button type="button" onClick={() => setEditingDateId(null)} className="text-sm text-text-dim">✕</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => startEditDate(list)} className="text-xs text-text-dim/50 hover:text-text-dim">
+                    {list.concertDate
+                      ? `🗓 ${new Date(list.concertDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} — edit`
+                      : '+ Set concert date'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Song list */}
+            {listSongs.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-text-dim">No songs yet — add some below.</p>
+            ) : (
+              <ul>
+                {listSongs.map((song) => {
+                  const m = masteryPercent(song)
+                  const mc = m < 30 ? 'text-wrong' : m < 70 ? 'text-accent' : 'text-correct'
+                  return (
+                    <li key={song.id} className="flex items-center justify-between border-b border-border/40 px-4 py-3 last:border-b-0">
+                      <button type="button" onClick={() => onOpen(song.id)} className="min-w-0 text-left">
+                        <p className="truncate text-sm text-text">{song.title}</p>
+                        <p className={`text-xs ${mc}`}>{m}%</p>
+                      </button>
+                      <div className="ml-3 flex shrink-0 items-center gap-2">
+                        <button type="button" onClick={() => onStudy(song.id)} className="text-xs text-accent hover:brightness-110">Study</button>
+                        <button type="button" onClick={() => onRemoveSongFromList(list.id, song.id)} className="text-xs text-text-dim/50 hover:text-wrong">✕</button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            {/* Add songs */}
+            {isAddingTo ? (
+              <div className="border-t border-border/40 p-3">
+                <input
+                  type="search"
+                  value={addSearch}
+                  onChange={(e) => setAddSearch(e.target.value)}
+                  placeholder="Search your songs…"
+                  autoFocus
+                  className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
+                />
+                {getPickableSongs(list.id).length === 0 ? (
+                  <p className="py-2 text-center text-sm text-text-dim">{addSearch ? 'No matches' : 'All songs already in this list'}</p>
+                ) : (
+                  <ul className="max-h-48 overflow-y-auto">
+                    {getPickableSongs(list.id).map((song) => (
+                      <li key={song.id}>
+                        <button type="button" onClick={() => onAddSongToList(list.id, song.id)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left hover:bg-bg-card">
+                          <p className="truncate text-sm text-text">{song.title}</p>
+                          <span className="ml-2 shrink-0 text-xs text-accent">+ Add</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button type="button" onClick={() => { setAddingToId(null); setAddSearch('') }}
+                  className="mt-2 w-full text-center text-xs text-text-dim hover:text-text">Done adding</button>
+              </div>
+            ) : (
+              <div className="border-t border-border/40 px-4 py-3">
+                <button type="button" onClick={() => { setAddingToId(list.id); setAddSearch('') }}
+                  className="text-xs text-accent hover:brightness-110">+ Add songs</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {concertLists.length > 0 && <SectionHeader icon="🎭" label="Concert Repertoire" />}
+      {concertLists.map(renderList)}
+
+      {standardLists.length > 0 && <SectionHeader icon="🎵" label="Standard Repertoire" />}
+      {standardLists.map(renderList)}
+
+      {userLists.length === 0 && !showNewList && (
+        <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
+          <p className="text-text">No lists yet</p>
+          <p className="mt-2 text-sm text-text-dim">Create a Concert list for a performance or a Standard list for ongoing repertoire.</p>
+        </div>
+      )}
+
+      {/* New list form */}
+      {showNewList ? (
+        <div className="rounded-2xl border border-border bg-bg-soft p-4">
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {(['concert', 'standard'] as UserListType[]).map((t) => (
+              <button key={t} type="button" onClick={() => setNewType(t)}
+                className={`rounded-xl border px-3 py-3 text-left transition-colors ${newType === t ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-dim hover:text-text'}`}>
+                <p className="text-base">{t === 'concert' ? '🎭' : '🎵'}</p>
+                <p className="mt-1 text-sm font-medium">{t === 'concert' ? 'Concert' : 'Standard'}</p>
+                <p className="text-xs opacity-70">{t === 'concert' ? 'Linked to a date' : 'Learn at will'}</p>
+              </button>
+            ))}
+          </div>
+          <input ref={newNameRef} type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !(newType === 'concert' && !newDate)) handleCreateList() }}
+            placeholder={newType === 'concert' ? 'e.g. Spring Concert 2026' : 'e.g. Favourite Folk Songs'}
+            className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
+          />
+          {newType === 'concert' && (
+            <div className="mb-3 flex items-center gap-2">
+              <label className="shrink-0 text-xs text-text-dim">Concert date *</label>
+              <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)}
+                className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent" />
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setShowNewList(false); setNewName(''); setNewDate('') }}
+              className="flex-1 rounded-xl border border-border py-2 text-sm text-text-dim hover:text-text">Cancel</button>
+            <button type="button" disabled={!newName.trim() || (newType === 'concert' && !newDate) || creating} onClick={handleCreateList}
+              className="flex-[2] rounded-xl border border-accent/30 bg-accent/15 py-2 text-sm text-accent disabled:opacity-40 hover:bg-accent/25">
+              {creating ? 'Creating…' : 'Create list'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setShowNewList(true)}
+          className="rounded-2xl border border-dashed border-border py-3 text-sm text-text-dim hover:border-accent/50 hover:text-accent">
+          + New list
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── My Songs tab ──────────────────────────────────────────────────────────────
 
 interface MySongsTabProps {
@@ -666,6 +983,26 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         Add your first song
       </button>
     </div>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
   )
 }
 

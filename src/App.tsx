@@ -47,7 +47,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     () => localStorage.getItem(onboardingKey) === 'true',
   )
   const {
-    songs, publicSongs, userLists, listSongIds, loading: songsLoading,
+    songs, userLists, listSongIds, loading: songsLoading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
     createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   } = useStorage(userId)
@@ -210,7 +210,6 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
   return (
     <SongLibrary
       songs={songs}
-      publicSongs={publicSongs}
       groups={myGroups}
       groupsLoading={groupsLoading}
       allPracticeLists={allPracticeLists}
@@ -220,17 +219,17 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onStudy={(id) => setView({ name: 'study', songId: id })}
       onAdd={() => setView({ name: 'add' })}
       onSignOut={onSignOut}
-      onCloneSong={cloneSong}
       onOpenGroup={(group) => setView({ name: 'group', group })}
       onCreateGroup={createGroup}
       onJoinGroup={joinGroup}
-      onAddToPracticeList={(song, listId) => addSongToPracticeList(listId, song.id)}
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
       onToggleKnown={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isKnown: !s.isKnown }) }}
       onGetPracticeListSongs={getPracticeListSongs}
       onCreateUserList={(name, listType, concertDate) => createUserList(name, listType, concertDate)}
       onUpdateUserList={updateUserList}
       onDeleteUserList={deleteUserList}
+      onAddSongToUserList={addSongToUserList}
+      onRemoveSongFromUserList={removeSongFromUserList}
     />
   )
 }
