@@ -1,16 +1,16 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-bg: #0e0c0a;
-  --color-bg-soft: #1a1612;
-  --color-bg-card: #19150f;
-  --color-border: #2a2319;
-  --color-accent: #c8a96e;
-  --color-accent-soft: #8a7550;
-  --color-text: #e8e0d0;
-  --color-text-dim: #9a8f7a;
-  --color-correct: #7fdc9e;
-  --color-wrong: #f07070;
+  --color-bg: #0c0a08;
+  --color-bg-soft: #1c1710;
+  --color-bg-card: #131008;
+  --color-border: #2e2418;
+  --color-accent: #d4924a;
+  --color-accent-soft: #8a6033;
+  --color-text: #ede5d5;
+  --color-text-dim: #9e9080;
+  --color-correct: #78c896;
+  --color-wrong: #e87060;
 
   --font-serif:
     Georgia, 'Times New Roman', 'Iowan Old Style', 'Palatino Linotype', serif;
@@ -59,8 +59,7 @@ select:focus {
   100% { background-position: -200% center; }
 }
 
-/* Fine-tune input caret and selection to match amber accent */
 ::selection {
-  background: rgba(200, 169, 110, 0.35);
+  background: rgba(212, 146, 74, 0.35);
   color: var(--color-text);
 }
