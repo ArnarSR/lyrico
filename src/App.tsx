@@ -40,15 +40,16 @@ export default function App() {
 }
 
 function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
+  const onboardingKey = `lyrico_onboarded_${userId}`
   const [onboarded, setOnboarded] = useState(
-    () => localStorage.getItem('lyrico_onboarded') === 'true',
+    () => localStorage.getItem(onboardingKey) === 'true',
   )
 
   if (!onboarded) {
     return (
       <Onboarding
         onDone={() => {
-          localStorage.setItem('lyrico_onboarded', 'true')
+          localStorage.setItem(onboardingKey, 'true')
           setOnboarded(true)
         }}
       />
