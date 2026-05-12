@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UserListType } from '../types'
+import { parseDateInput } from '../lib/dates'
 
 interface CreateListFormProps {
   onSave: (name: string, listType: UserListType, concertDate?: number) => Promise<void>
@@ -11,6 +12,7 @@ export function CreateListForm({ onSave, onCancel }: CreateListFormProps) {
   const [name, setName] = useState('')
   const [date, setDate] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { nameRef.current?.focus() }, [])
@@ -18,10 +20,12 @@ export function CreateListForm({ onSave, onCancel }: CreateListFormProps) {
   async function handleSubmit() {
     if (!name.trim() || (listType === 'concert' && !date)) return
     setSaving(true)
+    setError(null)
     try {
-      const concertDate = date ? new Date(date).getTime() : undefined
+      const concertDate = date ? parseDateInput(date) : undefined
       await onSave(name.trim(), listType, concertDate)
-    } finally {
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create list — check your connection.')
       setSaving(false)
     }
   }
@@ -70,6 +74,11 @@ export function CreateListForm({ onSave, onCancel }: CreateListFormProps) {
             className="flex-1 rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text focus:border-accent"
           />
         </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <p className="mb-2 rounded-xl border border-wrong/40 bg-wrong/10 px-3 py-2 text-sm text-wrong">{error}</p>
       )}
 
       {/* Actions */}

@@ -4,6 +4,7 @@ import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
 import { CreateListForm } from './CreateListForm'
+import { formatDateInput, parseDateInput } from '../lib/dates'
 import { GroupsTab } from './GroupsTab'
 import { FeedbackModal } from './FeedbackModal'
 
@@ -370,11 +371,11 @@ function PracticeListCard({
 }: PracticeListCardProps) {
   const [editingDate, setEditingDate] = useState(false)
   const [dateValue, setDateValue] = useState(
-    concertDate ? new Date(concertDate).toISOString().split('T')[0] : '',
+    concertDate ? formatDateInput(concertDate) : '',
   )
 
   useEffect(() => {
-    setDateValue(concertDate ? new Date(concertDate).toISOString().split('T')[0] : '')
+    setDateValue(concertDate ? formatDateInput(concertDate) : '')
   }, [concertDate])
 
   useEffect(() => {
@@ -399,7 +400,7 @@ function PracticeListCard({
   const isPast = listType === 'concert' && daysLeft !== null && daysLeft < 0
 
   function handleSaveDate() {
-    const d = dateValue ? new Date(dateValue).getTime() : null
+    const d = dateValue ? parseDateInput(dateValue) : null
     onUpdateList?.({ concertDate: d })
     setEditingDate(false)
   }
@@ -510,8 +511,8 @@ function PracticeListCard({
                     onChange={(e) => setDateValue(e.target.value)}
                     className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
                   />
-                  <button type="button" onClick={handleSaveDate} className="text-sm text-accent hover:brightness-110">Save</button>
-                  <button type="button" onClick={() => setEditingDate(false)} className="text-sm text-text-dim">✕</button>
+                  <button type="button" onClick={handleSaveDate} className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10">Save</button>
+                  <button type="button" onClick={() => setEditingDate(false)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
                 </div>
               ) : (
                 <button
@@ -578,12 +579,12 @@ function ListsTab({
 
   function startEditDate(list: UserList) {
     setEditingDateId(list.id)
-    setDateValue(list.concertDate ? new Date(list.concertDate).toISOString().split('T')[0] : '')
+    setDateValue(list.concertDate ? formatDateInput(list.concertDate) : '')
     setExpandedId(list.id)
   }
 
   function saveDate(listId: string) {
-    const d = dateValue ? new Date(dateValue).getTime() : null
+    const d = dateValue ? parseDateInput(dateValue) : null
     onUpdateUserList(listId, { concertDate: d })
     setEditingDateId(null)
   }
@@ -692,8 +693,8 @@ function ListsTab({
                     <label className="shrink-0 text-xs text-text-dim">Concert date</label>
                     <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)}
                       className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent" />
-                    <button type="button" onClick={() => saveDate(list.id)} className="text-sm text-accent">Save</button>
-                    <button type="button" onClick={() => setEditingDateId(null)} className="text-sm text-text-dim">✕</button>
+                    <button type="button" onClick={() => saveDate(list.id)} className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10">Save</button>
+                    <button type="button" onClick={() => setEditingDateId(null)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
                   </div>
                 ) : (
                   <button type="button" onClick={() => startEditDate(list)} className="text-xs text-text-dim/50 hover:text-text-dim">

@@ -28,21 +28,23 @@ export function Feedback({ quality, ratio, attempt, correct, fullLine, showDiff,
   const borderColor = perfect
     ? 'border-accent/70'
     : good
-      ? 'border-correct/40'
-      : 'border-wrong/40'
-  const bgColor = perfect ? '' : good ? 'bg-correct/10' : 'bg-wrong/10'
+      ? 'border-correct/50'
+      : 'border-wrong/60'
+  const bgColor = perfect ? '' : good ? 'bg-correct/10' : 'bg-wrong/15'
   const labelColor = perfect ? 'text-accent' : good ? 'text-correct' : 'text-wrong'
+  // Extra left accent bar for wrong/missed answers so they're impossible to miss
+  const accentBar = !good && !perfect ? 'border-l-4 border-l-wrong' : ''
 
   return (
     <section
-      className={`mt-4 rounded-2xl border p-4 ${borderColor} ${bgColor}`}
+      className={`mt-4 rounded-2xl border p-4 ${borderColor} ${bgColor} ${accentBar}`}
       style={perfect ? SHIMMER_STYLE : undefined}
       aria-live="polite"
     >
       {/* Header row */}
       <div className="flex items-baseline justify-between">
         <div>
-          <p className={`uppercase tracking-[0.15em] ${labelColor} ${perfect ? 'text-base font-semibold' : 'text-sm'}`}>
+          <p className={`uppercase tracking-[0.15em] ${labelColor} ${perfect ? 'text-base font-semibold' : good ? 'text-sm' : 'text-base font-semibold'}`}>
             {perfect ? '✦ ' : ''}{qualityLabel(quality)}
           </p>
           {hintUsed && (

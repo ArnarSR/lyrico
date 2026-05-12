@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Group, GroupMember, PracticeList, UserListType } from '../types'
 import { Header, Shell } from './Shell'
 import { CreateListForm } from './CreateListForm'
+import { formatDateInput, parseDateInput } from '../lib/dates'
 
 interface GroupDetailProps {
   group: Group
@@ -41,11 +42,11 @@ export function GroupDetail({
 
   function startEditDate(list: PracticeList) {
     setEditingDateListId(list.id)
-    setEditDateValue(list.concertDate ? new Date(list.concertDate).toISOString().split('T')[0] : '')
+    setEditDateValue(list.concertDate ? formatDateInput(list.concertDate) : '')
   }
 
   function saveEditDate(listId: string) {
-    const d = editDateValue ? new Date(editDateValue).getTime() : null
+    const d = editDateValue ? parseDateInput(editDateValue) : null
     onUpdatePracticeList(listId, { concertDate: d })
     setPracticeLists((prev) => prev.map((l) => l.id === listId ? { ...l, concertDate: d ?? undefined } : l))
     setEditingDateListId(null)
@@ -105,8 +106,8 @@ export function GroupDetail({
                   onChange={(e) => setEditDateValue(e.target.value)}
                   className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
                 />
-                <button type="button" onClick={() => saveEditDate(list.id)} className="text-sm text-accent">Save</button>
-                <button type="button" onClick={() => setEditingDateListId(null)} className="text-sm text-text-dim">✕</button>
+                <button type="button" onClick={() => saveEditDate(list.id)} className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10">Save</button>
+                <button type="button" onClick={() => setEditingDateListId(null)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
               </div>
             ) : (
               <button

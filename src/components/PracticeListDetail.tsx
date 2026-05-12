@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { PracticeList, Song, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { Header, Shell } from './Shell'
+import { formatDateInput, parseDateInput } from '../lib/dates'
 
 interface PracticeListDetailProps {
   list: PracticeList
@@ -29,7 +30,7 @@ export function PracticeListDetail({
   const [adding, setAdding] = useState<Set<string>>(new Set())
   const [editingDate, setEditingDate] = useState(false)
   const [dateValue, setDateValue] = useState(
-    list.concertDate ? new Date(list.concertDate).toISOString().split('T')[0] : '',
+    list.concertDate ? formatDateInput(list.concertDate) : '',
   )
 
   useEffect(() => {
@@ -73,7 +74,7 @@ export function PracticeListDetail({
   }
 
   function handleSaveDate() {
-    const d = dateValue ? new Date(dateValue).getTime() : null
+    const d = dateValue ? parseDateInput(dateValue) : null
     onUpdateList({ concertDate: d })
     setEditingDate(false)
   }
@@ -141,8 +142,8 @@ export function PracticeListDetail({
                     onChange={(e) => setDateValue(e.target.value)}
                     className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
                   />
-                  <button type="button" onClick={handleSaveDate} className="text-sm text-accent">Save</button>
-                  <button type="button" onClick={() => setEditingDate(false)} className="text-sm text-text-dim">✕</button>
+                  <button type="button" onClick={handleSaveDate} className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10">Save</button>
+                  <button type="button" onClick={() => setEditingDate(false)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
                 </div>
               ) : (
                 <button
