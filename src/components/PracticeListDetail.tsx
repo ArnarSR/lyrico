@@ -15,13 +15,14 @@ interface PracticeListDetailProps {
   onAddSong: (listId: string, songId: string) => Promise<void>
   onRemoveSong: (listId: string, songId: string) => Promise<void>
   onUpdateList: (patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
+  onStudy: (songId: string) => void
 }
 
 const DAY_MS = 86_400_000
 function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 
 export function PracticeListDetail({
-  list, userId, mySongIds, mySongs, onBack, onCloneSong, onGetSongs, onAddSong, onRemoveSong, onUpdateList,
+  list, userId, mySongIds, mySongs, onBack, onCloneSong, onGetSongs, onAddSong, onRemoveSong, onUpdateList, onStudy,
 }: PracticeListDetailProps) {
   const [songs, setSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,6 +53,13 @@ export function PracticeListDetail({
     const total = songsWithMastery.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0)
     return Math.round(total / songsWithMastery.length)
   }, [songsWithMastery])
+
+  // Pick the lowest-mastery song the user owns for the Study button
+  const studySong = useMemo(() => {
+    const owned = songsWithMastery.filter((s) => mySongIds.has(s.id) && !s.isKnown)
+    if (!owned.length) return null
+    return owned.reduce((worst, s) => masteryPercent(s) < masteryPercent(worst) ? s : worst)
+  }, [songsWithMastery, mySongIds])
 
   const pickableSongs = useMemo(() => {
     const q = search.toLowerCase()
@@ -163,14 +171,24 @@ export function PracticeListDetail({
         </div>
       )}
 
-      {/* Add my songs button */}
-      <div className="mb-4">
+      {/* Action row */}
+      <div className="mb-4 flex gap-2">
+        {studySong && (
+          <button
+            type="button"
+            onClick={() => onStudy(studySong.id)}
+            className="flex items-center gap-2 rounded-full border border-accent bg-accent px-5 py-2 text-sm font-medium text-bg hover:brightness-110"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            Study
+          </button>
+        )}
         <button
           type="button"
           onClick={() => { setShowPicker((v) => !v); setSearch('') }}
-          className="rounded-full border border-accent bg-accent/15 px-4 py-2 text-sm text-accent hover:bg-accent/25"
+          className="rounded-full border border-border bg-bg-soft px-4 py-2 text-sm text-text-dim hover:text-text"
         >
-          {showPicker ? 'Done adding' : '+ Add my songs'}
+          {showPicker ? 'Done' : '+ Add songs'}
         </button>
       </div>
 
@@ -224,20 +242,36 @@ export function PracticeListDetail({
       ) : (
         <ul className="flex flex-col gap-3">
           {songs.map((song) => {
-            const m = masteryPercent(mySongs.find((ms) => ms.id === song.id) ?? song)
-            const mc = m < 30 ? 'text-wrong' : m < 70 ? 'text-accent' : 'text-correct'
+            const resolved = mySongs.find((ms) => ms.id === song.id) ?? song
+            const m = resolved.isKnown ? 100 : masteryPercent(resolved)
+            const barColor = m < 30 ? 'bg-wrong/70' : m < 70 ? 'bg-accent' : 'bg-correct'
+            const textColor = m < 30 ? 'text-wrong' : m < 70 ? 'text-accent' : 'text-correct'
+            const isStudyTarget = studySong?.id === song.id
             return (
-              <li key={song.id} className="rounded-2xl border border-border bg-bg-card p-4">
+              <li key={song.id} className={`rounded-2xl border bg-bg-card p-4 ${isStudyTarget ? 'border-accent/40' : 'border-border'}`}>
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-base text-text">{song.title}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <p className="truncate text-base text-text">{song.title}</p>
+                      <span className={`shrink-0 text-xs font-medium ${textColor}`}>{m}%</span>
+                    </div>
                     {song.composer && (
                       <p className="mt-0.5 truncate text-sm text-text-dim">{song.composer}</p>
                     )}
-                    <p className={`mt-1 text-xs ${mc}`}>{m}%</p>
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-soft">
+                      <div className={`h-full rounded-full transition-[width] ${barColor}`} style={{ width: `${m}%` }} />
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    {!mySongIds.has(song.id) && (
+                    {mySongIds.has(song.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => onStudy(song.id)}
+                        className="rounded-full border border-border px-3 py-1.5 text-xs text-text-dim hover:border-accent/50 hover:text-accent"
+                      >
+                        Study
+                      </button>
+                    ) : (
                       <button
                         type="button"
                         onClick={() => onCloneSong(song)}

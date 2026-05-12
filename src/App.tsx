@@ -20,7 +20,7 @@ type View =
   | { name: 'library' }
   | { name: 'add' }
   | { name: 'stats'; songId: string }
-  | { name: 'study'; songId: string; stanzaIdx?: number }
+  | { name: 'study'; songId: string; stanzaIdx?: number; returnTo?: View }
   | { name: 'stanza'; songId: string }
   | { name: 'test'; songId: string }
   | { name: 'edit-lyrics'; songId: string }
@@ -142,7 +142,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       <StudySession
         song={song}
         activeCards={activeCards}
-        onExit={() => setView({ name: 'stats', songId: view.songId })}
+        onExit={() => setView(view.returnTo ?? { name: 'stats', songId: view.songId })}
         onCardReviewed={(card) => updateCard(song.id, card)}
       />
     )
@@ -224,6 +224,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onAddSong={addSongToPracticeList}
         onRemoveSong={removeSongFromPracticeList}
         onUpdateList={(patch) => updatePracticeList(view.list.id, patch)}
+        onStudy={(songId) => setView({ name: 'study', songId, returnTo: view })}
       />
     )
   }
