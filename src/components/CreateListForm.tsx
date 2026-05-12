@@ -25,7 +25,15 @@ export function CreateListForm({ onSave, onCancel }: CreateListFormProps) {
       const concertDate = date ? parseDateInput(date) : undefined
       await onSave(name.trim(), listType, concertDate)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create list — check your connection.')
+      const msg = e instanceof Error ? e.message
+        : (e as { message?: string })?.message ?? String(e)
+      // Supabase schema error — almost certainly the migration hasn't been run
+      const needsMigration = /column|does not exist|schema/i.test(msg)
+      setError(
+        needsMigration
+          ? 'Database columns missing. Run the SQL migration in Supabase:\n\nALTER TABLE user_lists ADD COLUMN IF NOT EXISTS list_type text NOT NULL DEFAULT \'standard\';\nALTER TABLE user_lists ADD COLUMN IF NOT EXISTS concert_date bigint;\nALTER TABLE practice_lists ADD COLUMN IF NOT EXISTS list_type text NOT NULL DEFAULT \'concert\';\nALTER TABLE practice_lists ADD COLUMN IF NOT EXISTS concert_date bigint;'
+          : msg || 'Could not create list — check your connection.',
+      )
       setSaving(false)
     }
   }
@@ -78,7 +86,7 @@ export function CreateListForm({ onSave, onCancel }: CreateListFormProps) {
 
       {/* Error */}
       {error && (
-        <p className="mb-2 rounded-xl border border-wrong/40 bg-wrong/10 px-3 py-2 text-sm text-wrong">{error}</p>
+        <pre className="mb-2 whitespace-pre-wrap rounded-xl border border-wrong/40 bg-wrong/10 px-3 py-2 font-mono text-xs text-wrong">{error}</pre>
       )}
 
       {/* Actions */}
