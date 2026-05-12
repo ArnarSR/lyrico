@@ -100,16 +100,17 @@ export function useGroups(userId: string) {
   }, [userId])
 
   const joinGroup = useCallback(async (inviteCode: string): Promise<Group | null> => {
-    const { data: rows } = await supabase
+    const { data: rows, error: lookupErr } = await supabase
       .from('groups').select('*').eq('invite_code', inviteCode.trim().toUpperCase()).limit(1)
 
+    if (lookupErr) { console.error('joinGroup lookup error:', lookupErr); throw lookupErr }
     if (!rows?.length) return null
     const group = rowToGroup(rows[0] as GroupRow)
 
     if (myGroups.some((g) => g.id === group.id)) return group
 
     const { error } = await supabase.from('group_members').insert({ group_id: group.id, user_id: userId, role: 'member', joined_at: Date.now() })
-    if (error) throw error
+    if (error) { console.error('joinGroup insert error:', error); throw error }
 
     setMyGroups((prev) => [group, ...prev])
     return group
