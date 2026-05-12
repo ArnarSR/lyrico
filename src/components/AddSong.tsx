@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { VoicePart } from '../types'
 import { VOICE_PARTS } from '../types'
 import type { NewSongInput } from '../hooks/useStorage'
@@ -19,9 +19,15 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   const [audioUrl, setAudioUrl] = useState<string | undefined>()
   const [audioName, setAudioName] = useState<string | undefined>()
   const [isPublic, setIsPublic] = useState(false)
+
   const [importUrl, setImportUrl] = useState('')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+
+  const [ocrFile, setOcrFile] = useState<File | null>(null)
+  const [ocrBusy, setOcrBusy] = useState(false)
+  const [ocrError, setOcrError] = useState<string | null>(null)
+  const ocrInputRef = useRef<HTMLInputElement>(null)
 
   const lineCount = lyrics
     .split('\n')
@@ -34,8 +40,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
     const file = e.target.files?.[0]
     if (!file) return
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    const url = URL.createObjectURL(file)
-    setAudioUrl(url)
+    setAudioUrl(URL.createObjectURL(file))
     setAudioName(file.name)
   }
 
@@ -54,6 +59,32 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
       setImportError(err instanceof Error ? err.message : 'Import failed')
     } finally {
       setImporting(false)
+    }
+  }
+
+  function handleOcrFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null
+    setOcrFile(file)
+    setOcrError(null)
+  }
+
+  async function handleOcrExtract() {
+    if (!ocrFile) return
+    setOcrBusy(true)
+    setOcrError(null)
+    try {
+      const form = new FormData()
+      form.append('file', ocrFile)
+      const res = await fetch('/api/extract-lyrics-ocr', { method: 'POST', body: form })
+      const data = await res.json() as { lyrics?: string; error?: string }
+      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`)
+      setLyrics(data.lyrics ?? '')
+      setOcrFile(null)
+      if (ocrInputRef.current) ocrInputRef.current.value = ''
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : 'Extraction failed')
+    } finally {
+      setOcrBusy(false)
     }
   }
 
@@ -120,7 +151,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
         </Field>
 
         <Field label="Lyrics" hint="One line per row — each line becomes its own flashcard.">
-          {/* URL import row */}
+          {/* URL import */}
           <div className="mb-2 flex gap-2">
             <input
               type="url"
@@ -139,6 +170,36 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
             </button>
           </div>
           {importError && <p className="mb-1 text-xs text-wrong">{importError}</p>}
+
+          {/* Sheet music OCR */}
+          <div className="mb-2 rounded-xl border border-border bg-bg-soft px-3 py-3">
+            <p className="mb-2 text-xs text-text-dim">
+              Scan sheet music — upload an image or PDF and the lyrics will be extracted automatically.
+            </p>
+            <div className="flex gap-2">
+              <label className="flex flex-1 cursor-pointer items-center justify-between rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text-dim hover:border-accent-soft">
+                <span className="truncate">{ocrFile ? ocrFile.name : 'Choose image or PDF…'}</span>
+                {ocrFile && <span className="ml-2 shrink-0 text-xs text-accent">✓</span>}
+                <input
+                  ref={ocrInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={handleOcrFileChange}
+                  className="hidden"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!ocrFile || ocrBusy}
+                onClick={handleOcrExtract}
+                className="shrink-0 rounded-xl border border-accent bg-accent/15 px-3 py-2 text-sm text-accent hover:bg-accent/25 disabled:opacity-40"
+              >
+                {ocrBusy ? 'Reading…' : 'Extract'}
+              </button>
+            </div>
+            {ocrError && <p className="mt-1 text-xs text-wrong">{ocrError}</p>}
+          </div>
+
           <textarea
             value={lyrics}
             onChange={(e) => setLyrics(e.target.value)}
