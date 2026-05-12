@@ -44,17 +44,6 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
   const [onboarded, setOnboarded] = useState(
     () => localStorage.getItem(onboardingKey) === 'true',
   )
-
-  if (!onboarded) {
-    return (
-      <Onboarding
-        onDone={() => {
-          localStorage.setItem(onboardingKey, 'true')
-          setOnboarded(true)
-        }}
-      />
-    )
-  }
   const {
     songs, publicSongs, userLists, listSongIds, loading: songsLoading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong,
@@ -67,6 +56,18 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   } = useGroups(userId)
   const [view, setView] = useState<View>({ name: 'library' })
+
+  // Must be after all hooks
+  if (!onboarded) {
+    return (
+      <Onboarding
+        onDone={() => {
+          localStorage.setItem(onboardingKey, 'true')
+          setOnboarded(true)
+        }}
+      />
+    )
+  }
 
   const mySongIds = new Set(songs.map((s) => s.id))
 
