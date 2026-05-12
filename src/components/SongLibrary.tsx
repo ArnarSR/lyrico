@@ -32,6 +32,7 @@ interface SongLibraryProps {
   onDeleteUserList: (listId: string) => void
   onAddSongToUserList: (listId: string, songId: string) => Promise<void>
   onRemoveSongFromUserList: (listId: string, songId: string) => Promise<void>
+  onOpenPracticeList: (list: PracticeList) => void
 }
 
 const DAY_MS = 86_400_000
@@ -55,7 +56,7 @@ export function SongLibrary({
   onOpen, onStudy, onAdd, onSignOut,
   onOpenGroup, onCreateGroup, onJoinGroup, onTogglePublic, onToggleKnown,
   onGetPracticeListSongs, onCreateUserList, onUpdateUserList, onDeleteUserList,
-  onAddSongToUserList, onRemoveSongFromUserList,
+  onAddSongToUserList, onRemoveSongFromUserList, onOpenPracticeList,
 }: SongLibraryProps) {
   const now = useNow()
   const [tab, setTab] = useState<Tab>('practice')
@@ -133,6 +134,8 @@ export function SongLibrary({
           songs={songs}
           userLists={userLists}
           listSongIds={listSongIds}
+          groups={groups}
+          allPracticeLists={allPracticeLists}
           now={now}
           onOpen={onOpen}
           onStudy={onStudy}
@@ -141,6 +144,7 @@ export function SongLibrary({
           onDeleteUserList={onDeleteUserList}
           onAddSongToList={onAddSongToUserList}
           onRemoveSongFromList={onRemoveSongFromUserList}
+          onOpenPracticeList={onOpenPracticeList}
         />
       )}
 
@@ -537,6 +541,8 @@ interface ListsTabProps {
   songs: Song[]
   userLists: UserList[]
   listSongIds: Map<string, Set<string>>
+  groups: Group[]
+  allPracticeLists: PracticeList[]
   now: number
   onOpen: (id: string) => void
   onStudy: (id: string) => void
@@ -545,13 +551,14 @@ interface ListsTabProps {
   onDeleteUserList: (listId: string) => void
   onAddSongToList: (listId: string, songId: string) => Promise<void>
   onRemoveSongFromList: (listId: string, songId: string) => Promise<void>
+  onOpenPracticeList: (list: PracticeList) => void
 }
 
 function ListsTab({
-  songs, userLists, listSongIds, now,
+  songs, userLists, listSongIds, groups, allPracticeLists, now,
   onOpen, onStudy,
   onCreateUserList, onUpdateUserList, onDeleteUserList,
-  onAddSongToList, onRemoveSongFromList,
+  onAddSongToList, onRemoveSongFromList, onOpenPracticeList,
 }: ListsTabProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -771,15 +778,65 @@ function ListsTab({
     )
   }
 
+  // Group practice lists — one section per group
+  const groupsWithLists = groups
+    .map((g) => ({ group: g, lists: allPracticeLists.filter((l) => l.groupId === g.id) }))
+    .filter(({ lists }) => lists.length > 0)
+
   return (
     <div className="flex flex-col gap-3">
+
+      {/* ── Group lists ─────────────────────────────────────── */}
+      {groupsWithLists.length > 0 && (
+        <>
+          <SectionHeader icon="👥" label="Group Lists" />
+          {groupsWithLists.map(({ group, lists }) => (
+            <div key={group.id}>
+              <p className="mb-1.5 px-1 text-xs text-text-dim/60">{group.name}</p>
+              <ul className="flex flex-col gap-2">
+                {lists.map((list) => {
+                  const daysLeft = list.listType === 'concert' && list.concertDate ? daysUntil(list.concertDate, now) : null
+                  const dColor = daysLeft === null ? '' : daysLeft <= 7 ? 'text-wrong' : daysLeft <= 30 ? 'text-accent' : 'text-text-dim'
+                  return (
+                    <li key={list.id}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenPracticeList(list)}
+                        className={`w-full overflow-hidden rounded-xl border bg-bg-soft px-4 py-3 text-left hover:brightness-110 ${list.listType === 'concert' ? 'border-accent/25' : 'border-border'}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm text-text">{list.name}</p>
+                          <span className="shrink-0 text-xs text-text-dim/60">{list.listType === 'concert' ? '🎭' : '🎵'}</span>
+                        </div>
+                        {list.listType === 'concert' && (
+                          <p className={`mt-0.5 text-xs ${daysLeft !== null ? dColor : 'text-wrong/70'}`}>
+                            {daysLeft !== null
+                              ? (daysLeft > 0 ? `🗓 ${daysLeft}d left` : daysLeft === 0 ? 'Concert today!' : 'Concert passed')
+                              : 'No concert date set'}
+                          </p>
+                        )}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
+          <div className="my-1 h-px bg-border/40" />
+        </>
+      )}
+
+      {/* ── My lists ────────────────────────────────────────── */}
+      {(concertLists.length > 0 || standardLists.length > 0) && (
+        <SectionHeader icon="🗂" label="My Lists" />
+      )}
       {concertLists.length > 0 && <SectionHeader icon="🎭" label="Concert Repertoire" />}
       {concertLists.map(renderList)}
 
       {standardLists.length > 0 && <SectionHeader icon="🎵" label="Standard Repertoire" />}
       {standardLists.map(renderList)}
 
-      {userLists.length === 0 && !showNewList && (
+      {userLists.length === 0 && allPracticeLists.length === 0 && !showNewList && (
         <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
           <p className="text-text">No lists yet</p>
           <p className="mt-2 text-sm text-text-dim">Create a Concert list for a performance or a Standard list for ongoing repertoire.</p>

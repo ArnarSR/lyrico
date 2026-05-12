@@ -246,6 +246,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
       onToggleKnown={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isKnown: !s.isKnown }) }}
       onGetPracticeListSongs={getPracticeListSongs}
+      onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
       onCreateUserList={(name, listType, concertDate) => createUserList(name, listType, concertDate)}
       onUpdateUserList={updateUserList}
       onDeleteUserList={deleteUserList}
