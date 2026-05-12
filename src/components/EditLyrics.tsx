@@ -77,10 +77,11 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
     el.style.height = `${el.scrollHeight}px`
   }
 
-  const isDirty = rows.some((r, i) => {
+  const nonEmptyRows = rows.filter((r) => r.text.trim().length > 0)
+  const isDirty = nonEmptyRows.some((r, i) => {
     const orig = song.cards[i]
     return !orig || r.id !== orig.id || r.text !== orig.text
-  }) || rows.length !== song.cards.length
+  }) || nonEmptyRows.length !== song.cards.length
 
   return (
     <Shell>
@@ -106,12 +107,31 @@ export function EditLyrics({ song, onSave, onCancel }: EditLyricsProps) {
         }
       />
 
-      <p className="mb-4 text-xs text-text-dim">
-        {rows.length} line{rows.length !== 1 ? 's' : ''} · tap a line to edit · SM‑2 progress preserved when text is unchanged
-      </p>
+      {rows.length > 0 && (
+        <p className="mb-4 text-xs text-text-dim">
+          {rows.length} line{rows.length !== 1 ? 's' : ''} · tap a line to edit · SM‑2 progress preserved when text is unchanged
+        </p>
+      )}
 
-      {/* Insert-before-first button */}
-      <InsertButton onClick={() => insertAfter(null)} />
+      {/* Empty state */}
+      {rows.length === 0 && (
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <p className="text-text-dim">This song has no lines yet.</p>
+          <button
+            type="button"
+            onClick={() => insertAfter(null)}
+            className="flex items-center gap-2 rounded-full border border-accent bg-accent/15 px-5 py-2.5 text-sm text-accent hover:bg-accent/25"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add first line
+          </button>
+        </div>
+      )}
+
+      {/* Insert-before-first button (only visible when there are already rows) */}
+      {rows.length > 0 && <InsertButton onClick={() => insertAfter(null)} />}
 
       <ol className="flex flex-col">
         {rows.map((row, i) => (
