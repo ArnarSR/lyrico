@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Card, PracticeList, Song, UserList } from '../types'
-import { isMastered, masteryPercent } from '../hooks/useSM2'
+import { cardMastery, isMastered, masteryPercent } from '../hooks/useSM2'
 import { getStanzaStarts } from '../lib/stanzas'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
@@ -16,6 +16,7 @@ interface SongStatsProps {
   onStanzaDrill: () => void
   onDelete: () => void
   onTogglePublic: () => void
+  onToggleKnown: () => void
   onAddToPracticeList: (listId: string) => void
   onAddToUserList: (listId: string) => void
   onRemoveFromUserList: (listId: string) => void
@@ -27,7 +28,7 @@ const DAY_MS = 86_400_000
 export function SongStats({
   song, allPracticeLists, userLists, listSongIds,
   onBack, onStudy, onStudyVerse, onStanzaDrill, onDelete,
-  onTogglePublic, onAddToPracticeList, onAddToUserList, onRemoveFromUserList, onCreateUserList,
+  onTogglePublic, onToggleKnown, onAddToPracticeList, onAddToUserList, onRemoveFromUserList, onCreateUserList,
 }: SongStatsProps) {
   const now = useNow()
   const mastery = masteryPercent(song)
@@ -86,7 +87,7 @@ export function SongStats({
         <div className="flex items-baseline justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.15em] text-text-dim">Mastery</p>
-            <p className="mt-1 text-3xl text-accent">{mastery}%</p>
+            <p className={`mt-1 text-3xl font-medium ${mastery < 50 ? 'text-wrong' : mastery < 80 ? 'text-accent' : 'text-correct'}`}>{mastery}%</p>
           </div>
           {concertDays !== null && (
             <div className="text-right">
@@ -97,10 +98,25 @@ export function SongStats({
             </div>
           )}
         </div>
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
-          <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${mastery}%` }} />
-        </div>
+        <StageBar cards={song.cards} />
       </div>
+
+      <PhaseRoadmap cards={song.cards} />
+
+      {/* I know this song toggle */}
+      <button
+        type="button"
+        onClick={onToggleKnown}
+        className={`mt-4 flex w-full items-center justify-between rounded-xl border px-4 py-3 transition-colors ${song.isKnown ? 'border-correct/40 bg-correct/10' : 'border-border bg-bg-soft'}`}
+      >
+        <div className="text-left">
+          <p className={`text-sm ${song.isKnown ? 'text-correct' : 'text-text'}`}>I know this song</p>
+          <p className="text-xs text-text-dim">Hides it from "Now Practicing"</p>
+        </div>
+        <div className={`relative h-6 w-11 rounded-full transition-colors ${song.isKnown ? 'bg-correct' : 'bg-border'}`}>
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${song.isKnown ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </div>
+      </button>
 
       {/* Study buttons */}
       <div className="mt-4 flex gap-3">
@@ -252,6 +268,155 @@ export function SongStats({
   )
 }
 
+// ── Phase roadmap ─────────────────────────────────────────────────────────────
+
+const PHASES = [
+  {
+    label: 'Recognising',
+    desc: 'Fill in 25% of each line. Your ears are learning the shapes of the words.',
+    // A card has passed this phase once it advances to difficulty 1 (cardMastery ≥ 50)
+    passThreshold: 50,
+  },
+  {
+    label: 'Learning',
+    desc: 'Fill in 50% of each line. You\'re building active recall.',
+    passThreshold: 75,
+  },
+  {
+    label: 'Recalling',
+    desc: 'Recall every word from scratch. No safety net.',
+    passThreshold: 100,
+  },
+] as const
+
+function PhaseRoadmap({ cards }: { cards: Card[] }) {
+  const total = cards.length
+  if (total === 0) return null
+
+  const phaseDone = PHASES.map((p) => cards.filter((c) => cardMastery(c) >= p.passThreshold).length)
+  const currentIdx = phaseDone.findIndex((done) => done < total)
+  const allMastered = currentIdx === -1
+
+  // Line fill: proportion of the connecting track that should be highlighted
+  // Track has (n-1) segments; each segment fills fully once the left phase is done
+  const trackFill = allMastered
+    ? 100
+    : (() => {
+        const segmentWidth = 100 / (PHASES.length - 1)
+        const completedSegments = currentIdx  // segments before current phase
+        const inProgress = total > 0 ? phaseDone[currentIdx] / total : 0
+        return (completedSegments + inProgress) * segmentWidth
+      })()
+
+  return (
+    <section className="mt-5">
+      <h2 className="mb-4 text-xs uppercase tracking-[0.15em] text-text-dim">Learning Journey</h2>
+
+      {/* Stepper */}
+      <div className="relative">
+        {/* Track background */}
+        <div className="absolute left-[18px] right-[18px] top-[17px] h-0.5 bg-border" />
+        {/* Track fill */}
+        <div
+          className="absolute left-[18px] top-[17px] h-0.5 bg-accent transition-[width] duration-700"
+          style={{ width: `calc(${trackFill}% - ${trackFill === 100 ? 36 : 18}px)` }}
+        />
+
+        {/* Nodes + labels */}
+        <div className="relative flex justify-between">
+          {PHASES.map((phase, i) => {
+            const done = phaseDone[i] >= total
+            const isCurrent = i === currentIdx
+            const isFuture = !done && !isCurrent
+
+            return (
+              <div key={i} className="flex flex-col items-center gap-2" style={{ width: '33.33%' }}>
+                <div className={`flex h-[34px] w-[34px] items-center justify-center rounded-full border-2 text-sm font-semibold transition-colors ${
+                  done || allMastered
+                    ? 'border-correct bg-correct text-bg'
+                    : isCurrent
+                      ? 'border-accent bg-accent/20 text-accent'
+                      : 'border-border bg-bg-soft text-text-dim'
+                }`}>
+                  {done || allMastered ? '✓' : i + 1}
+                </div>
+                <p className={`text-center text-xs leading-tight ${
+                  done || allMastered ? 'text-correct'
+                  : isCurrent ? 'text-accent'
+                  : 'text-text-dim'
+                }`}>
+                  {phase.label}
+                </p>
+                <p className="text-xs text-text-dim/50">
+                  {phaseDone[i]}/{total}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Current phase detail card */}
+      <div className={`mt-4 rounded-2xl border px-4 py-3.5 ${allMastered ? 'border-correct/30 bg-correct/5' : 'border-accent/25 bg-accent/5'}`}>
+        {allMastered ? (
+          <p className="text-sm text-correct">🎉 All {total} lines mastered!</p>
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-medium text-accent">Phase {currentIdx + 1} · {PHASES[currentIdx].label}</p>
+              <p className="text-xs text-text-dim">{phaseDone[currentIdx]}/{total} lines</p>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-text-dim">{PHASES[currentIdx].desc}</p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-bg-card">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-500"
+                style={{ width: `${total > 0 ? (phaseDone[currentIdx] / total) * 100 : 0}%` }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Stage breakdown bar ────────────────────────────────────────────────────────
+
+const STAGE_COLORS = ['bg-bg-card', 'bg-wrong/50', 'bg-accent/60', 'bg-correct/50', 'bg-correct'] as const
+const STAGE_LABELS = ['Unseen', 'Recognising', 'Learning', 'Recalling', 'Mastered'] as const
+const STAGE_VALUES = [0, 25, 50, 75, 100] as const
+
+function StageBar({ cards }: { cards: Card[] }) {
+  const total = cards.length
+  if (total === 0) return null
+  const counts = STAGE_VALUES.map((v) => cards.filter((c) => cardMastery(c) === v).length)
+  return (
+    <div className="mt-3">
+      <div className="flex h-2 w-full overflow-hidden rounded-full">
+        {counts.map((count, i) =>
+          count > 0 ? (
+            <div
+              key={i}
+              className={`${STAGE_COLORS[i]} transition-[width] duration-500`}
+              style={{ width: `${(count / total) * 100}%` }}
+            />
+          ) : null,
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        {counts.map((count, i) =>
+          count > 0 ? (
+            <span key={i} className="flex items-center gap-1.5 text-xs text-text-dim">
+              <span className={`inline-block h-2 w-2 rounded-full ${STAGE_COLORS[i]}`} />
+              {STAGE_LABELS[i]} <span className="text-text-dim/60">({count})</span>
+            </span>
+          ) : null,
+        )}
+      </div>
+    </div>
+  )
+}
+
 function LineRow({ card, index, now }: { card: Card; index: number; now: number }) {
   const mastered = isMastered(card)
   const dueIn = card.nextDue - now
@@ -270,7 +435,7 @@ function LineRow({ card, index, now }: { card: Card; index: number; now: number 
           <p className="mt-0.5 truncate text-base text-text">{card.text}</p>
         </div>
         <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${mastered ? 'border-correct/40 text-correct' : 'border-border text-text-dim'}`}>
-          {['25%', '50%', 'full'][card.difficulty]}
+          {STAGE_LABELS[STAGE_VALUES.indexOf(cardMastery(card) as typeof STAGE_VALUES[number])] ?? 'Unseen'}
         </span>
       </div>
       <p className="mt-1 text-xs text-text-dim">{dueLabel}</p>

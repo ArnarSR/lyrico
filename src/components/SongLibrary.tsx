@@ -5,6 +5,7 @@ import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
 import { CommunityTab } from './CommunityTab'
 import { GroupsTab } from './GroupsTab'
+import { FeedbackModal } from './FeedbackModal'
 
 type Tab = 'mine' | 'community' | 'groups'
 
@@ -26,6 +27,7 @@ interface SongLibraryProps {
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
   onAddToPracticeList: (song: Song, listId: string) => void
   onTogglePublic: (songId: string) => void
+  onToggleKnown: (songId: string) => void
   onGetPracticeListSongs: (listId: string) => Promise<Song[]>
 }
 
@@ -48,16 +50,19 @@ function formatRelative(now: number, ts?: number): string {
 export function SongLibrary({
   songs, publicSongs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
   onOpen, onStudy, onAdd, onSignOut, onCloneSong,
-  onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList, onTogglePublic,
+  onOpenGroup, onCreateGroup, onJoinGroup, onAddToPracticeList, onTogglePublic, onToggleKnown,
   onGetPracticeListSongs,
 }: SongLibraryProps) {
   const now = useNow()
   const [tab, setTab] = useState<Tab>('mine')
+  const [showFeedback, setShowFeedback] = useState(false)
 
   const mySongIds = new Set(songs.map((s) => s.id))
 
   return (
     <Shell>
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+
       <Header
         title="Lyrico"
         subtitle="Learn your lyrics by heart"
@@ -68,6 +73,9 @@ export function SongLibrary({
                 <PlusIcon />
               </IconButton>
             )}
+            <IconButton label="Send feedback" onClick={() => setShowFeedback(true)}>
+              <FeedbackIcon />
+            </IconButton>
             <IconButton label="Sign out" onClick={onSignOut}>
               <SignOutIcon />
             </IconButton>
@@ -101,6 +109,7 @@ export function SongLibrary({
           onStudy={onStudy}
           onAdd={onAdd}
           onTogglePublic={onTogglePublic}
+          onToggleKnown={onToggleKnown}
           onGetPracticeListSongs={onGetPracticeListSongs}
         />
       )}
@@ -141,12 +150,13 @@ interface MySongsTabProps {
   onStudy: (id: string) => void
   onAdd: () => void
   onTogglePublic: (id: string) => void
+  onToggleKnown: (id: string) => void
   onGetPracticeListSongs: (listId: string) => Promise<Song[]>
 }
 
 function MySongsTab({
   songs, groups, allPracticeLists, userLists, listSongIds, now,
-  onOpen, onStudy, onAdd, onTogglePublic, onGetPracticeListSongs,
+  onOpen, onStudy, onAdd, onTogglePublic, onToggleKnown, onGetPracticeListSongs,
 }: MySongsTabProps) {
   const [featuredListId, setFeaturedListId] = useState<string | null>(
     () => localStorage.getItem('lyrico_featured_list'),
@@ -173,18 +183,27 @@ function MySongsTab({
     })
   }, [featuredListId, isGroupList, onGetPracticeListSongs])
 
-  // Songs to show in the featured "Now Practicing" section (mastery < 100%)
-  const practiceSongs = useMemo(() => {
+  // All songs in the active list (for readiness calculation)
+  const allListSongs = useMemo(() => {
     if (!featuredListId) return []
     if (isGroupList) {
-      // Prefer user's own library copy (has mastery data) over the group song
-      return fetchedGroupSongs
-        .map((gs) => songs.find((s) => s.id === gs.id) ?? gs)
-        .filter((s) => masteryPercent(s) < 100)
+      return fetchedGroupSongs.map((gs) => songs.find((s) => s.id === gs.id) ?? gs)
     }
     const ids = listSongIds.get(featuredListId) ?? new Set<string>()
-    return songs.filter((s) => ids.has(s.id) && masteryPercent(s) < 100)
+    return songs.filter((s) => ids.has(s.id))
   }, [featuredListId, isGroupList, fetchedGroupSongs, songs, listSongIds])
+
+  // Concert readiness: known songs = 100%, others = their mastery %
+  const concertReadiness = useMemo(() => {
+    if (allListSongs.length === 0) return null
+    const total = allListSongs.reduce((sum, s) => sum + (s.isKnown ? 100 : masteryPercent(s)), 0)
+    return Math.round(total / allListSongs.length)
+  }, [allListSongs])
+
+  // Songs to show in the featured "Now Practicing" section (mastery < 100%, not marked known)
+  const practiceSongs = useMemo(() => {
+    return allListSongs.filter((s) => masteryPercent(s) < 100 && !s.isKnown)
+  }, [allListSongs])
 
   function selectList(id: string | null) {
     setFeaturedListId(id)
@@ -277,6 +296,27 @@ function MySongsTab({
           </div>
         )}
 
+        {/* Concert readiness bar */}
+        {concertReadiness !== null && !fetchingGroup && (
+          <div className="mb-3 rounded-2xl border border-border bg-bg-soft px-4 py-3">
+            <div className="flex items-baseline justify-between">
+              <p className="text-xs uppercase tracking-[0.15em] text-text-dim">Concert readiness</p>
+              <p className={`text-lg font-medium ${concertReadiness < 50 ? 'text-wrong' : concertReadiness < 80 ? 'text-accent' : 'text-correct'}`}>
+                {concertReadiness}%
+              </p>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
+              <div
+                className={`h-full rounded-full transition-[width] ${concertReadiness < 50 ? 'bg-wrong/70' : concertReadiness < 80 ? 'bg-accent' : 'bg-correct'}`}
+                style={{ width: `${concertReadiness}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-text-dim">
+              {allListSongs.length} song{allListSongs.length !== 1 ? 's' : ''} · {allListSongs.filter((s) => s.isKnown).length} known · {allListSongs.filter((s) => masteryPercent(s) === 100 && !s.isKnown).length} mastered
+            </p>
+          </div>
+        )}
+
         {/* Featured content */}
         {!featuredListId ? (
           <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-6 text-center">
@@ -301,7 +341,7 @@ function MySongsTab({
             <ul className="flex flex-col gap-3">
               {practiceSongs.map((song) => (
                 <li key={song.id}>
-                  <PracticeSongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} />
+                  <PracticeSongRow song={song} now={now} onOpen={() => onOpen(song.id)} onStudy={() => onStudy(song.id)} onToggleKnown={() => onToggleKnown(song.id)} />
                 </li>
               ))}
             </ul>
@@ -350,7 +390,7 @@ function MySongsTab({
 
 // ── Song row variants ─────────────────────────────────────────────────────────
 
-function PracticeSongRow({ song, now, onOpen, onStudy }: { song: Song; now: number; onOpen: () => void; onStudy: () => void }) {
+function PracticeSongRow({ song, now, onOpen, onStudy, onToggleKnown }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onToggleKnown: () => void }) {
   const mastery = masteryPercent(song)
   const concertDays = song.concertDate ? daysUntil(song.concertDate, now) : null
   const urgent = concertDays !== null && concertDays <= 7
@@ -378,7 +418,11 @@ function PracticeSongRow({ song, now, onOpen, onStudy }: { song: Song; now: numb
         )}
       </button>
       <div className="mt-3 flex border-t border-border">
-        <button type="button" onClick={onStudy} className="flex-1 py-3 text-sm text-accent hover:brightness-110">
+        <button type="button" onClick={onToggleKnown} className="flex-1 py-3 text-sm text-text-dim hover:text-correct">
+          Know it ✓
+        </button>
+        <div className="w-px bg-border" />
+        <button type="button" onClick={onStudy} className="flex-[2] py-3 text-sm text-accent hover:brightness-110">
           Study now
         </button>
       </div>
@@ -444,6 +488,14 @@ function PlusIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+function FeedbackIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   )
 }

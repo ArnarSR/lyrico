@@ -30,6 +30,7 @@ interface SongRow {
   concert_date: number | null
   created_at: number
   is_public: boolean
+  is_known: boolean
 }
 
 interface CardRow {
@@ -119,6 +120,7 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     cards,
     createdAt: songRow.created_at,
     isPublic: songRow.is_public,
+    isKnown: songRow.is_known,
     ownerId: songRow.user_id,
     lastStudied,
   }
@@ -228,11 +230,10 @@ export function useStorage(userId: string) {
     })
   }, [addSong])
 
-  const updateSong = useCallback((songId: string, patch: { isPublic?: boolean }) => {
+  const updateSong = useCallback((songId: string, patch: { isPublic?: boolean; isKnown?: boolean }) => {
     setSongs((prev) => prev.map((s) => s.id === songId ? { ...s, ...patch } : s))
     if (patch.isPublic !== undefined) {
       if (patch.isPublic) {
-        // add to publicSongs
         setSongs((current) => {
           const song = current.find((s) => s.id === songId)
           if (song) setPublicSongs((prev) => [{ ...song, isPublic: true }, ...prev.filter((s) => s.id !== songId)])
@@ -242,7 +243,10 @@ export function useStorage(userId: string) {
         setPublicSongs((prev) => prev.filter((s) => s.id !== songId))
       }
     }
-    supabase.from('songs').update({ is_public: patch.isPublic }).eq('id', songId).then(({ error }) => {
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.isPublic !== undefined) dbPatch.is_public = patch.isPublic
+    if (patch.isKnown !== undefined) dbPatch.is_known = patch.isKnown
+    supabase.from('songs').update(dbPatch).eq('id', songId).then(({ error }) => {
       if (error) console.error('updateSong:', error)
     })
   }, [])

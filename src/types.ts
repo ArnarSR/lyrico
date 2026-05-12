@@ -52,6 +52,7 @@ export interface Song {
   createdAt: number
   lastStudied?: number
   isPublic?: boolean
+  isKnown?: boolean
   ownerId?: string // user_id of the song owner (set on community/practice list songs)
 }
 

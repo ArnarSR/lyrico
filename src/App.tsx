@@ -149,6 +149,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
           setView({ name: 'library' })
         }}
         onTogglePublic={() => updateSong(song.id, { isPublic: !song.isPublic })}
+        onToggleKnown={() => updateSong(song.id, { isKnown: !song.isKnown })}
         onAddToPracticeList={(listId) => addSongToPracticeList(listId, song.id)}
         onAddToUserList={(listId) => addSongToUserList(listId, song.id)}
         onRemoveFromUserList={(listId) => removeSongFromUserList(listId, song.id)}
@@ -210,6 +211,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onJoinGroup={joinGroup}
       onAddToPracticeList={(song, listId) => addSongToPracticeList(listId, song.id)}
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
+      onToggleKnown={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isKnown: !s.isKnown }) }}
       onGetPracticeListSongs={getPracticeListSongs}
     />
   )

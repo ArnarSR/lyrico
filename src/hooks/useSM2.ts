@@ -107,10 +107,26 @@ export function isMastered(card: Card): boolean {
   return card.difficulty >= 2 && card.repetitions >= 2 && card.interval >= 6
 }
 
+/**
+ * Continuous 0–100 score for a single card representing its learning stage:
+ *   0  — never studied
+ *  25  — recognising (fill 25%, difficulty 0)
+ *  50  — learning (fill 50%, difficulty 1)
+ *  75  — recalling (full recall, not yet graduated)
+ * 100  — mastered (interval ≥ 6, repetitions ≥ 2)
+ */
+export function cardMastery(card: Card): number {
+  if (card.lastQuality === null) return 0
+  if (card.difficulty === 0) return 25
+  if (card.difficulty === 1) return 50
+  if (isMastered(card)) return 100
+  return 75
+}
+
 export function masteryPercent(song: Song): number {
   if (song.cards.length === 0) return 0
-  const mastered = song.cards.filter(isMastered).length
-  return Math.round((mastered / song.cards.length) * 100)
+  const total = song.cards.reduce((sum, c) => sum + cardMastery(c), 0)
+  return Math.round(total / song.cards.length)
 }
 
 // --- Hook ------------------------------------------------------------------
