@@ -3,6 +3,7 @@ import type { Card, PracticeList, Song, UserList } from '../types'
 import { cardMastery, isMastered, masteryPercent } from '../hooks/useSM2'
 import { getStanzaStarts } from '../lib/stanzas'
 import { useNow } from '../hooks/useNow'
+import { trackViewChanged } from '../lib/analytics'
 import { Header, IconButton, Shell } from './Shell'
 
 interface SongStatsProps {
@@ -120,32 +121,15 @@ export function SongStats({
         </div>
       </button>
 
-      {/* Study buttons */}
-      <div className="mt-4 flex gap-3">
-        <button
-          type="button"
-          onClick={onStanzaDrill}
-          className="flex-1 rounded-full border border-accent bg-accent/15 py-3 text-accent hover:bg-accent/25"
-        >
-          Stanza starts
-        </button>
-        <button
-          type="button"
-          onClick={onStudy}
-          className="flex-1 rounded-full border border-accent bg-accent py-3 text-bg hover:brightness-110"
-        >
-          Study
-        </button>
-      </div>
-
-      {/* Test button */}
-      <button
-        type="button"
-        onClick={onTest}
-        className="mt-2 flex w-full items-center justify-center gap-2 rounded-full border border-border bg-bg-soft py-3 text-sm text-text-dim hover:border-accent hover:text-accent"
-      >
-        <span>🏆</span> Test yourself — full recall, all lines
-      </button>
+      {/* Exercise picker */}
+      <ExercisePicker
+        songId={song.id}
+        mastery={mastery}
+        cardCount={song.cards.length}
+        onStudy={onStudy}
+        onStanzaDrill={onStanzaDrill}
+        onTest={onTest}
+      />
 
       {/* Verses */}
       {verses.length > 0 && (
@@ -479,4 +463,140 @@ function formatInterval(ms: number): string {
   if (ms < 3_600_000) return `${Math.max(1, Math.round(ms / 60_000))}m`
   if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h`
   return `${Math.round(ms / 86_400_000)}d`
+}
+
+// ── Exercise picker with confidence rating ──────────────────────────────────
+
+const CONFIDENCE_LEVELS = [
+  { key: 1, emoji: '😰', label: "Don't know it" },
+  { key: 2, emoji: '🤔', label: 'Still learning' },
+  { key: 3, emoji: '😊', label: 'Pretty confident' },
+  { key: 4, emoji: '🎯', label: 'Know it by heart' },
+] as const
+
+type ConfidenceKey = 1 | 2 | 3 | 4
+
+const EXERCISES = [
+  {
+    id: 'study' as const,
+    icon: '📖',
+    title: 'Study',
+    desc: 'Fill-in-the-blanks with spaced repetition. Best for learning new lines.',
+  },
+  {
+    id: 'stanza' as const,
+    icon: '🎵',
+    title: 'Stanza starts',
+    desc: 'Practice the first line of each verse. Good for rehearsal transitions.',
+  },
+  {
+    id: 'test' as const,
+    icon: '🏆',
+    title: 'Full recall test',
+    desc: 'Recall every word from scratch. Prove you know it.',
+  },
+] as const
+
+function getRecommendation(mastery: number, confidence: ConfidenceKey | null): 'study' | 'stanza' | 'test' {
+  // Confidence takes priority when set
+  if (confidence !== null) {
+    if (confidence <= 1) return 'study'
+    if (confidence === 2) return mastery >= 50 ? 'stanza' : 'study'
+    if (confidence === 3) return mastery >= 70 ? 'test' : 'stanza'
+    return 'test' // confidence 4
+  }
+  // Fall back to mastery-based
+  if (mastery < 40) return 'study'
+  if (mastery < 75) return 'stanza'
+  return 'test'
+}
+
+function confidenceKey(songId: string) { return `lyrico_confidence_${songId}` }
+
+function ExercisePicker({ songId, mastery, cardCount, onStudy, onStanzaDrill, onTest }: {
+  songId: string
+  mastery: number
+  cardCount: number
+  onStudy: () => void
+  onStanzaDrill: () => void
+  onTest: () => void
+}) {
+  const [confidence, setConfidence] = useState<ConfidenceKey | null>(() => {
+    const v = localStorage.getItem(confidenceKey(songId))
+    return v ? Number(v) as ConfidenceKey : null
+  })
+
+  function handleConfidence(key: ConfidenceKey) {
+    setConfidence(key)
+    localStorage.setItem(confidenceKey(songId), String(key))
+    trackViewChanged(`confidence_${key}`)
+  }
+
+  const recommended = getRecommendation(mastery, confidence)
+  const handlers: Record<string, () => void> = { study: onStudy, stanza: onStanzaDrill, test: onTest }
+
+  if (cardCount === 0) return null
+
+  return (
+    <section className="mt-5">
+      <h2 className="mb-3 text-xs uppercase tracking-[0.15em] text-text-dim">Practice</h2>
+
+      {/* Confidence rating */}
+      <div className="mb-4 rounded-2xl border border-border bg-bg-soft p-4">
+        <p className="mb-2.5 text-sm text-text">How well do you know this song?</p>
+        <div className="grid grid-cols-4 gap-2">
+          {CONFIDENCE_LEVELS.map((level) => (
+            <button
+              key={level.key}
+              type="button"
+              onClick={() => handleConfidence(level.key)}
+              className={`flex flex-col items-center gap-1 rounded-xl border py-2.5 transition-colors ${
+                confidence === level.key
+                  ? 'border-accent bg-accent/10'
+                  : 'border-border hover:border-accent/40'
+              }`}
+            >
+              <span className="text-xl">{level.emoji}</span>
+              <span className={`text-[10px] leading-tight ${confidence === level.key ? 'text-accent' : 'text-text-dim'}`}>
+                {level.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Exercise cards */}
+      <div className="flex flex-col gap-2">
+        {EXERCISES.map((ex) => {
+          const isRec = ex.id === recommended
+          return (
+            <button
+              key={ex.id}
+              type="button"
+              onClick={handlers[ex.id]}
+              className={`relative flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors ${
+                isRec
+                  ? 'border-accent/40 bg-accent/5 hover:bg-accent/10'
+                  : 'border-border bg-bg-soft hover:border-accent/30'
+              }`}
+            >
+              {isRec && (
+                <span className="absolute -top-2.5 right-3 rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-bg">
+                  Recommended
+                </span>
+              )}
+              <span className="mt-0.5 text-xl">{ex.icon}</span>
+              <div className="min-w-0">
+                <p className={`text-sm font-medium ${isRec ? 'text-accent' : 'text-text'}`}>{ex.title}</p>
+                <p className="mt-0.5 text-xs text-text-dim">{ex.desc}</p>
+              </div>
+              <svg className={`ml-auto mt-1.5 shrink-0 ${isRec ? 'text-accent' : 'text-text-dim/40'}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
 }
