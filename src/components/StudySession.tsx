@@ -4,6 +4,7 @@ import { cardMastery, useSM2 } from '../hooks/useSM2'
 import { buildSegments, buildSegmentsForWords, getBlankedWords } from '../lib/blanks'
 import type { Segment } from '../lib/blanks'
 import { normalize, scoreAnswer } from '../lib/scoring'
+import { trackStudyStarted, trackStudyCompleted, trackStudyExited } from '../lib/analytics'
 import { Feedback } from './Feedback'
 import { Header, IconButton, Shell } from './Shell'
 
@@ -39,6 +40,25 @@ export function StudySession({
       .filter((c) => c.nextDue <= now)
       .sort((a, b) => a.nextDue - b.nextDue)
   })
+
+  const [startTime] = useState(Date.now)
+  const [cardsReviewedCount, setCardsReviewedCount] = useState(0)
+  const [sessionComplete, setSessionComplete] = useState(false)
+
+  // Track session start
+  useEffect(() => {
+    trackStudyStarted(song.id, sessionCards.length, activeProp ? 'verse' : 'full')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleExit() {
+    if (sessionComplete) {
+      trackStudyCompleted(song.id, cardsReviewedCount, Date.now() - startTime)
+    } else {
+      const remaining = effectiveSession.filter((c) => !sessionDone.has(c.id)).length + repeatQueue.length
+      trackStudyExited(song.id, cardsReviewedCount, remaining)
+    }
+    onExit()
+  }
 
   // Overrides the schedule — user chose to practice even though nothing is due.
   const [overrideAll, setOverrideAll] = useState(false)
@@ -147,6 +167,7 @@ export function StudySession({
   }, [milestone])
 
   if (!current) {
+    if (!sessionComplete && cardsReviewedCount > 0) setSessionComplete(true)
     const isEmpty = activeCards.length === 0
     const nothingDue = !isEmpty && sessionCards.length === 0
     const nextDue = nothingDue
@@ -161,7 +182,7 @@ export function StudySession({
         <Header
           title={song.title}
           subtitle="Study session"
-          left={<BackButton onClick={onExit} />}
+          left={<BackButton onClick={handleExit} />}
         />
         {isEmpty ? (
           <p className="mt-8 text-center text-text-dim">This song has no lines yet.</p>
@@ -179,7 +200,7 @@ export function StudySession({
             </button>
             <button
               type="button"
-              onClick={onExit}
+              onClick={handleExit}
               className="rounded-full border border-border px-6 py-2.5 text-sm text-text-dim hover:text-text"
             >
               Back to library
@@ -193,7 +214,7 @@ export function StudySession({
               <p className="text-5xl">{isFullyMastered ? '🎉' : '✓'}</p>
               <p className="text-xl text-text">{isFullyMastered ? 'Song mastered!' : 'Session complete'}</p>
               <p className="text-text-dim">
-                {sessionCards.length} line{sessionCards.length !== 1 ? 's' : ''} reviewed
+                {cardsReviewedCount} line{cardsReviewedCount !== 1 ? 's' : ''} reviewed
               </p>
               {/* Stage breakdown summary */}
               <div className="mt-2 w-full max-w-xs rounded-2xl border border-border bg-bg-soft px-4 py-3">
@@ -203,7 +224,7 @@ export function StudySession({
               </div>
               <button
                 type="button"
-                onClick={onExit}
+                onClick={handleExit}
                 className="mt-4 rounded-full border border-accent bg-accent/15 px-6 py-3 text-accent hover:bg-accent/25"
               >
                 Back to library
@@ -258,6 +279,7 @@ export function StudySession({
     if (!checked) return
     const updated = review(checked.card, checked.quality, song.concertDate)
     onCardReviewed(updated)
+    setCardsReviewedCount((n) => n + 1)
     if (checked.quality < 3) {
       const entry: RepeatEntry = {
         id: checked.card.id,
@@ -301,7 +323,7 @@ export function StudySession({
       <Header
         title={song.title}
         subtitle={`${DIFFICULTY_LABEL[current.difficulty]} · ${Math.round(progress)}% mastered`}
-        left={<BackButton onClick={onExit} />}
+        left={<BackButton onClick={handleExit} />}
         right={song.audioUrl ? <AudioToggle src={song.audioUrl} /> : undefined}
       />
 

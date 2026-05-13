@@ -3,6 +3,7 @@ import type { Group, GroupMember, PracticeList, Song, UserListType } from '../ty
 import { uid } from '../lib/id'
 import { supabase } from '../lib/supabase'
 import { fetchProfiles } from './useProfile'
+import { trackGroupCreated, trackGroupJoined, trackGroupLeft, trackPracticeListCreated } from '../lib/analytics'
 
 // ── Row types ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export function useGroups(userId: string) {
 
     const group = rowToGroup(row)
     setMyGroups((prev) => [group, ...prev])
+    trackGroupCreated()
     return group
   }, [userId])
 
@@ -113,11 +115,13 @@ export function useGroups(userId: string) {
     if (error) { console.error('joinGroup insert error:', error); throw error }
 
     setMyGroups((prev) => [group, ...prev])
+    trackGroupJoined()
     return group
   }, [userId, myGroups])
 
   const leaveGroup = useCallback(async (groupId: string) => {
     setMyGroups((prev) => prev.filter((g) => g.id !== groupId))
+    trackGroupLeft()
     await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId)
   }, [userId])
 
@@ -142,6 +146,7 @@ export function useGroups(userId: string) {
     if (error) throw error
     const list = rowToList(row)
     setAllPracticeLists((prev) => [...prev, list])
+    trackPracticeListCreated(listType)
     return list
   }, [userId])
 

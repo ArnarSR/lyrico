@@ -14,6 +14,7 @@ import { GroupDetail } from './components/GroupDetail'
 import { PracticeListDetail } from './components/PracticeListDetail'
 import { EditLyrics } from './components/EditLyrics'
 import { getStanzaLineRange } from './lib/stanzas'
+import { trackSongAdded, trackSongDeleted, trackLyricsEdited, trackViewChanged, trackPracticeListStudy } from './lib/analytics'
 import type { Group, PracticeList } from './types'
 
 type View =
@@ -60,7 +61,14 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     getGroupDetails, createPracticeList, updatePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   } = useGroups(userId)
-  const [view, setView] = useState<View>({ name: 'library' })
+  const [view, setViewRaw] = useState<View>({ name: 'library' })
+  const setView = useCallback((v: View | ((prev: View) => View)) => {
+    setViewRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v
+      trackViewChanged(next.name)
+      return next
+    })
+  }, [])
 
   // Must be after all hooks
   if (!onboarded) {
@@ -99,6 +107,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onCancel={() => setView({ name: 'library' })}
         onSave={(input) => {
           const song = addSong(input)
+          trackSongAdded(song.id, song.cards.length, !!input.audioUrl, input.isPublic)
           setView({ name: 'stats', songId: song.id })
         }}
       />
@@ -165,6 +174,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onEditLyrics={() => setView({ name: 'edit-lyrics', songId: song.id })}
         onDelete={() => {
           deleteSong(song.id)
+          trackSongDeleted()
           setView({ name: 'library' })
         }}
         onTogglePublic={() => updateSong(song.id, { isPublic: !song.isPublic })}
@@ -185,6 +195,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         song={song}
         onSave={async (lines) => {
           await editSongLines(song.id, lines)
+          trackLyricsEdited(song.id, lines.length)
           setView({ name: 'stats', songId: song.id })
         }}
         onCancel={() => setView({ name: 'stats', songId: view.songId })}
@@ -224,7 +235,10 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onAddSong={addSongToPracticeList}
         onRemoveSong={removeSongFromPracticeList}
         onUpdateList={(patch) => updatePracticeList(view.list.id, patch)}
-        onStudy={(songId) => setView({ name: 'study', songId, returnTo: view })}
+        onStudy={(songId) => {
+          trackPracticeListStudy(view.list.id, songId)
+          setView({ name: 'study', songId, returnTo: view })
+        }}
       />
     )
   }

@@ -3,6 +3,7 @@ import type { VoicePart } from '../types'
 import { VOICE_PARTS } from '../types'
 import type { NewSongInput } from '../hooks/useStorage'
 import { isSectionLabel } from '../lib/stanzas'
+import { trackLyricsImported } from '../lib/analytics'
 import { Header, Shell } from './Shell'
 
 const DRAFT_KEY = 'lyrico_add_song_draft'
@@ -92,6 +93,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
       if (error || !text) throw new Error(error ?? 'No text returned')
       setLyrics(text)
       setImportUrl('')
+      trackLyricsImported()
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Import failed')
     } finally {
