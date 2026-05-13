@@ -107,7 +107,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onCancel={() => setView({ name: 'library' })}
         onSave={(input) => {
           const song = addSong(input)
-          trackSongAdded(song.id, song.cards.length, !!input.audioUrl, input.isPublic)
+          trackSongAdded(song.id, song.cards.length, !!input.audioUrl, !!input.isPublic)
           setView({ name: 'stats', songId: song.id })
         }}
       />
