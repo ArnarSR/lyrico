@@ -29,6 +29,7 @@ export function PracticeListDetail({
   const [showPicker, setShowPicker] = useState(false)
   const [search, setSearch] = useState('')
   const [adding, setAdding] = useState<Set<string>>(new Set())
+  const [cloning, setCloning] = useState(false)
   const [editingDate, setEditingDate] = useState(false)
   const [concertDate, setConcertDate] = useState<number | undefined>(list.concertDate)
   const [dateValue, setDateValue] = useState(
@@ -75,6 +76,17 @@ export function PracticeListDetail({
     setSongs((prev) => [...prev, song])
     await onAddSong(list.id, song.id)
     setAdding((prev) => { const s = new Set(prev); s.delete(song.id); return s })
+  }
+
+  const songsNotOwned = songs.filter((s) => !mySongIds.has(s.id))
+
+  async function handleCloneAll() {
+    if (songsNotOwned.length === 0) return
+    setCloning(true)
+    for (const song of songsNotOwned) {
+      onCloneSong(song)
+    }
+    setCloning(false)
   }
 
   async function handleRemove(songId: string) {
@@ -191,6 +203,23 @@ export function PracticeListDetail({
           {showPicker ? 'Done' : '+ Add songs'}
         </button>
       </div>
+
+      {/* Add all songs to library banner */}
+      {!loading && songsNotOwned.length > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-2xl border border-accent/25 bg-accent/5 px-4 py-3">
+          <p className="text-sm text-text-dim">
+            {songsNotOwned.length} song{songsNotOwned.length !== 1 ? 's' : ''} not in your library
+          </p>
+          <button
+            type="button"
+            disabled={cloning}
+            onClick={handleCloneAll}
+            className="shrink-0 rounded-full border border-accent bg-accent/15 px-4 py-1.5 text-sm text-accent hover:bg-accent/25 disabled:opacity-50"
+          >
+            {cloning ? 'Adding…' : 'Add all to library'}
+          </button>
+        </div>
+      )}
 
       {/* Song picker */}
       {showPicker && (
