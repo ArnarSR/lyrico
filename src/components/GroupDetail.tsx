@@ -12,7 +12,7 @@ interface GroupDetailProps {
   onOpenPracticeList: (list: PracticeList) => void
   onGetDetails: (groupId: string) => Promise<{ members: GroupMember[]; practiceLists: PracticeList[] }>
   onCreatePracticeList: (groupId: string, name: string, listType: UserListType, concertDate?: number) => Promise<PracticeList>
-  onUpdatePracticeList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
+  onUpdatePracticeList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => Promise<void>
   onLeaveGroup: (groupId: string) => Promise<void>
   onAddToPractice: (list: PracticeList) => Promise<void>
 }
@@ -51,11 +51,25 @@ export function GroupDetail({
     setEditDateValue(list.concertDate ? formatDateInput(list.concertDate) : '')
   }
 
-  function saveEditDate(listId: string) {
+  const [savingDateId, setSavingDateId] = useState<string | null>(null)
+  const [savedDateId, setSavedDateId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  async function saveEditDate(listId: string) {
     const d = editDateValue ? parseDateInput(editDateValue) : null
-    onUpdatePracticeList(listId, { concertDate: d })
-    setPracticeLists((prev) => prev.map((l) => l.id === listId ? { ...l, concertDate: d ?? undefined } : l))
-    setEditingDateListId(null)
+    setSavingDateId(listId)
+    setSaveError(null)
+    try {
+      await onUpdatePracticeList(listId, { concertDate: d })
+      setPracticeLists((prev) => prev.map((l) => l.id === listId ? { ...l, concertDate: d ?? undefined } : l))
+      setEditingDateListId(null)
+      setSavedDateId(listId)
+      setTimeout(() => setSavedDateId((curr) => curr === listId ? null : curr), 2500)
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Could not save date')
+    } finally {
+      setSavingDateId(null)
+    }
   }
 
   function copyCode() {
@@ -134,27 +148,44 @@ export function GroupDetail({
         {isAdmin && list.listType === 'concert' && (
           <div className="border-t border-border/40 px-4 py-2">
             {isEditingDate ? (
-              <div className="flex items-center gap-2">
-                <label className="shrink-0 text-xs text-text-dim">Concert date</label>
-                <input
-                  type="date"
-                  value={editDateValue}
-                  onChange={(e) => setEditDateValue(e.target.value)}
-                  className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
-                />
-                <button type="button" onClick={() => saveEditDate(list.id)} className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10">Save</button>
-                <button type="button" onClick={() => setEditingDateListId(null)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <label className="shrink-0 text-xs text-text-dim">Concert date</label>
+                  <input
+                    type="date"
+                    value={editDateValue}
+                    onChange={(e) => setEditDateValue(e.target.value)}
+                    className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
+                  />
+                  <button
+                    type="button"
+                    disabled={savingDateId === list.id}
+                    onClick={() => saveEditDate(list.id)}
+                    className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                  >
+                    {savingDateId === list.id ? 'Saving…' : 'Save'}
+                  </button>
+                  <button type="button" onClick={() => setEditingDateListId(null)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
+                </div>
+                {saveError && editingDateListId === list.id && (
+                  <p className="text-xs text-wrong">{saveError}</p>
+                )}
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => startEditDate(list)}
-                className="text-xs text-text-dim/50 hover:text-text-dim"
-              >
-                {list.concertDate
-                  ? `🗓 ${new Date(list.concertDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} — edit`
-                  : '+ Set concert date'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => startEditDate(list)}
+                  className="text-xs text-text-dim/50 hover:text-text-dim"
+                >
+                  {list.concertDate
+                    ? `🗓 ${new Date(list.concertDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} — edit`
+                    : '+ Set concert date'}
+                </button>
+                {savedDateId === list.id && (
+                  <span className="text-xs text-correct">✓ Saved</span>
+                )}
+              </div>
             )}
           </div>
         )}

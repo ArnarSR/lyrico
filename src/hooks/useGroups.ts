@@ -151,8 +151,11 @@ export function useGroups(userId: string) {
   }, [userId])
 
   const updatePracticeList = useCallback(async (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => {
+    // Snapshot for rollback if the DB write fails or is silently RLS-rejected
+    let snapshot: PracticeList | undefined
     setAllPracticeLists((prev) => prev.map((l) => {
       if (l.id !== listId) return l
+      snapshot = l
       const updated = { ...l }
       if (patch.name !== undefined) updated.name = patch.name
       if (patch.listType !== undefined) updated.listType = patch.listType
@@ -163,7 +166,22 @@ export function useGroups(userId: string) {
     if (patch.name !== undefined) dbPatch.name = patch.name.trim()
     if (patch.listType !== undefined) dbPatch.list_type = patch.listType
     if ('concertDate' in patch) dbPatch.concert_date = patch.concertDate ?? null
-    await supabase.from('practice_lists').update(dbPatch).eq('id', listId)
+    // Use .select() so the response contains the affected rows. If RLS blocks
+    // the update, data is an empty array (not an error). We treat that as
+    // failure and roll back so users don't see a phantom "success".
+    const { data, error } = await supabase
+      .from('practice_lists')
+      .update(dbPatch)
+      .eq('id', listId)
+      .select()
+    if (error || !data || data.length === 0) {
+      console.error('updatePracticeList failed:', error ?? 'no rows affected (RLS?)')
+      if (snapshot) {
+        const rollback = snapshot
+        setAllPracticeLists((prev) => prev.map((l) => l.id === listId ? rollback : l))
+      }
+      throw error ?? new Error('Update was rejected (likely permissions)')
+    }
   }, [])
 
   const deletePracticeList = useCallback(async (listId: string) => {

@@ -346,8 +346,10 @@ export function useStorage(userId: string) {
   }, [userId])
 
   const updateUserList = useCallback(async (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => {
+    let snapshot: UserList | undefined
     setUserLists((prev) => prev.map((l) => {
       if (l.id !== listId) return l
+      snapshot = l
       const updated = { ...l }
       if (patch.name !== undefined) updated.name = patch.name
       if (patch.listType !== undefined) updated.listType = patch.listType
@@ -358,7 +360,19 @@ export function useStorage(userId: string) {
     if (patch.name !== undefined) dbPatch.name = patch.name.trim()
     if (patch.listType !== undefined) dbPatch.list_type = patch.listType
     if ('concertDate' in patch) dbPatch.concert_date = patch.concertDate ?? null
-    await supabase.from('user_lists').update(dbPatch).eq('id', listId)
+    const { data, error } = await supabase
+      .from('user_lists')
+      .update(dbPatch)
+      .eq('id', listId)
+      .select()
+    if (error || !data || data.length === 0) {
+      console.error('updateUserList failed:', error ?? 'no rows affected (RLS?)')
+      if (snapshot) {
+        const rollback = snapshot
+        setUserLists((prev) => prev.map((l) => l.id === listId ? rollback : l))
+      }
+      throw error ?? new Error('Update was rejected (likely permissions)')
+    }
   }, [])
 
   const deleteUserList = useCallback(async (listId: string) => {
