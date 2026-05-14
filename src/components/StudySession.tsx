@@ -448,7 +448,24 @@ export function StudySession({
           </button>
         )}
       </div>
+
+      {/* Keyboard hints */}
+      <p className="mt-3 hidden text-center text-xs text-text-dim/60 sm:block">
+        {isInline ? (
+          <>Press <Kbd>Space</Kbd> for next word · <Kbd>Enter</Kbd> to {checked ? 'continue' : 'check'}</>
+        ) : (
+          <>Press <Kbd>Enter</Kbd> to {checked ? 'continue' : 'check'}</>
+        )}
+      </p>
     </Shell>
+  )
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="mx-0.5 rounded border border-border bg-bg-card px-1.5 py-0.5 font-mono text-[11px] text-text-dim">
+      {children}
+    </kbd>
   )
 }
 
