@@ -3,7 +3,9 @@ import type { ErrorInfo, ReactNode } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
 import { useGroups } from './hooks/useGroups'
+import { useProfile } from './hooks/useProfile'
 import { Auth } from './components/Auth'
+import { Profile } from './components/Profile'
 import { Onboarding } from './components/Onboarding'
 import { SongLibrary } from './components/SongLibrary'
 import { AddSong } from './components/AddSong'
@@ -28,6 +30,7 @@ type View =
   | { name: 'edit-lyrics'; songId: string }
   | { name: 'group'; group: Group }
   | { name: 'practice-list'; list: PracticeList }
+  | { name: 'profile' }
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null }
@@ -65,12 +68,12 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AppInner userId={user.id} onSignOut={signOut} />
+      <AppInner userId={user.id} userEmail={user.email} onSignOut={signOut} />
     </ErrorBoundary>
   )
 }
 
-function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
+function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail: string | undefined; onSignOut: () => void }) {
   const onboardingKey = `lyrico_onboarded_${userId}`
   const [onboarded, setOnboarded] = useState(true) // onboarding disabled for now
   const {
@@ -85,6 +88,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     getGroupDetails, createPracticeList, updatePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   } = useGroups(userId)
+  const { profile, updateProfile } = useProfile(userId)
   const [view, setViewRaw] = useState<View>({ name: 'library' })
   const setView = useCallback((v: View | ((prev: View) => View)) => {
     setViewRaw((prev) => {
@@ -250,6 +254,18 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     )
   }
 
+  if (view.name === 'profile') {
+    return (
+      <Profile
+        profile={profile}
+        email={userEmail}
+        onBack={() => setView({ name: 'library' })}
+        onUpdate={updateProfile}
+        onSignOut={onSignOut}
+      />
+    )
+  }
+
   if (view.name === 'practice-list') {
     return (
       <PracticeListDetail
@@ -287,6 +303,8 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onStudy={(id) => setView({ name: 'study', songId: id })}
       onAdd={() => setView({ name: 'add' })}
       onSignOut={onSignOut}
+      onOpenProfile={() => setView({ name: 'profile' })}
+      profileInitial={(profile?.displayName ?? userEmail ?? '?').slice(0, 1).toUpperCase()}
       onOpenGroup={(group) => setView({ name: 'group', group })}
       onCreateGroup={createGroup}
       onJoinGroup={joinGroup}

@@ -21,6 +21,8 @@ interface SongLibraryProps {
   onStudy: (songId: string) => void
   onAdd: () => void
   onSignOut: () => void
+  onOpenProfile: () => void
+  profileInitial: string
   onOpenGroup: (group: Group) => void
   onCreateGroup: (name: string, description?: string) => Promise<unknown>
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
@@ -53,11 +55,13 @@ function formatRelative(now: number, ts?: number): string {
 
 export function SongLibrary({
   songs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
-  onOpen, onStudy, onAdd, onSignOut,
+  onOpen, onStudy, onAdd, onSignOut, onOpenProfile, profileInitial,
   onOpenGroup, onCreateGroup, onJoinGroup, onTogglePublic, onToggleKnown,
   onGetPracticeListSongs, onCreateUserList, onUpdateUserList, onDeleteUserList,
   onAddSongToUserList, onRemoveSongFromUserList, onOpenPracticeList,
 }: SongLibraryProps) {
+  // onSignOut is still accepted but no longer used in the header; sign-out lives in Profile now
+  void onSignOut
   const now = useNow()
   const [tab, setTab] = useState<Tab>('practice')
   const [showFeedback, setShowFeedback] = useState(false)
@@ -79,9 +83,14 @@ export function SongLibrary({
             <IconButton label="Send feedback" onClick={() => setShowFeedback(true)}>
               <FeedbackIcon />
             </IconButton>
-            <IconButton label="Sign out" onClick={onSignOut}>
-              <SignOutIcon />
-            </IconButton>
+            <button
+              type="button"
+              aria-label="Profile"
+              onClick={onOpenProfile}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
+            >
+              {profileInitial}
+            </button>
           </div>
         }
       />
@@ -992,12 +1001,3 @@ function FeedbackIcon() {
   )
 }
 
-function SignOutIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  )
-}
