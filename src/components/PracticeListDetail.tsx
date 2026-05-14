@@ -14,7 +14,7 @@ interface PracticeListDetailProps {
   onGetSongs: (listId: string) => Promise<Song[]>
   onAddSong: (listId: string, songId: string) => Promise<void>
   onRemoveSong: (listId: string, songId: string) => Promise<void>
-  onUpdateList: (patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
+  onUpdateList: (patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => Promise<void>
   onStudy: (songId: string) => void
 }
 
@@ -94,11 +94,26 @@ export function PracticeListDetail({
     await onRemoveSong(list.id, songId)
   }
 
-  function handleSaveDate() {
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  async function handleSaveDate() {
     const d = dateValue ? parseDateInput(dateValue) : null
-    onUpdateList({ concertDate: d })
-    setConcertDate(d ?? undefined)
-    setEditingDate(false)
+    setSaveStatus('saving')
+    setSaveError(null)
+    try {
+      await onUpdateList({ concertDate: d })
+      setConcertDate(d ?? undefined)
+      setEditingDate(false)
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 2500)
+    } catch (e) {
+      setSaveStatus('error')
+      const msg = e instanceof Error ? e.message
+        : (e && typeof e === 'object' && 'message' in e) ? String((e as { message: unknown }).message)
+        : String(e)
+      setSaveError(msg || 'Could not save date')
+    }
   }
 
   const daysLeft = list.listType === 'concert' && concertDate ? daysUntil(concertDate) : null
@@ -156,27 +171,44 @@ export function PracticeListDetail({
           {isOwner && list.listType === 'concert' && (
             <div className="border-t border-border/40 px-4 py-3">
               {editingDate ? (
-                <div className="flex items-center gap-2">
-                  <label className="shrink-0 text-xs text-text-dim">Concert date</label>
-                  <input
-                    type="date"
-                    value={dateValue}
-                    onChange={(e) => setDateValue(e.target.value)}
-                    className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
-                  />
-                  <button type="button" onClick={handleSaveDate} className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10">Save</button>
-                  <button type="button" onClick={() => setEditingDate(false)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <label className="shrink-0 text-xs text-text-dim">Concert date</label>
+                    <input
+                      type="date"
+                      value={dateValue}
+                      onChange={(e) => setDateValue(e.target.value)}
+                      className="flex-1 rounded-lg border border-border bg-bg px-2 py-1 text-sm text-text focus:border-accent"
+                    />
+                    <button
+                      type="button"
+                      disabled={saveStatus === 'saving'}
+                      onClick={handleSaveDate}
+                      className="rounded-lg px-3 py-1 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+                    >
+                      {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+                    </button>
+                    <button type="button" onClick={() => setEditingDate(false)} className="rounded-lg px-3 py-1 text-sm text-text-dim hover:bg-bg-card">Cancel</button>
+                  </div>
+                  {saveStatus === 'error' && (
+                    <p className="text-xs text-wrong">{saveError ?? 'Could not save date.'}</p>
+                  )}
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditingDate(true)}
-                  className="text-xs text-text-dim/50 hover:text-text-dim"
-                >
-                  {concertDate
-                    ? `🗓 ${new Date(concertDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} — edit`
-                    : '+ Set concert date'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingDate(true)}
+                    className="text-xs text-text-dim/50 hover:text-text-dim"
+                  >
+                    {concertDate
+                      ? `🗓 ${new Date(concertDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })} — edit`
+                      : '+ Set concert date'}
+                  </button>
+                  {saveStatus === 'saved' && (
+                    <span className="text-xs text-correct">✓ Saved</span>
+                  )}
+                </div>
               )}
             </div>
           )}

@@ -17,7 +17,7 @@ import { GroupDetail } from './components/GroupDetail'
 import { PracticeListDetail } from './components/PracticeListDetail'
 import { EditLyrics } from './components/EditLyrics'
 import { getStanzaLineRange } from './lib/stanzas'
-import { trackSongAdded, trackSongDeleted, trackLyricsEdited, trackViewChanged, trackPracticeListStudy } from './lib/analytics'
+import { trackSongAdded, trackSongDeleted, trackLyricsEdited, trackViewChanged, trackPracticeListStudy, captureException } from './lib/analytics'
 import type { Group, PracticeList } from './types'
 
 type View =
@@ -32,10 +32,47 @@ type View =
   | { name: 'practice-list'; list: PracticeList }
   | { name: 'profile' }
 
+function LoadingScreen({ onSignOut }: { onSignOut: () => void }) {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 6000)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-4 bg-bg px-6 text-center">
+      <p className="text-text-dim">Loading…</p>
+      {slow && (
+        <div className="mt-4 flex flex-col items-center gap-3">
+          <p className="max-w-sm text-sm text-text-dim/70">
+            This is taking longer than usual. Check your connection, or try signing out and back in.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-full border border-accent bg-accent/15 px-5 py-2 text-sm text-accent hover:bg-accent/25"
+          >
+            Reload
+          </button>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="text-xs text-text-dim/50 hover:text-text-dim"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null }
   static getDerivedStateFromError(error: Error) { return { error } }
-  componentDidCatch(error: Error, info: ErrorInfo) { console.error('App crash:', error, info) }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('App crash:', error, info)
+    captureException(error, { component_stack: info.componentStack })
+  }
   render() {
     if (this.state.error) {
       return (
@@ -75,7 +112,10 @@ export default function App() {
 
 function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail: string | undefined; onSignOut: () => void }) {
   const onboardingKey = `lyrico_onboarded_${userId}`
-  const [onboarded, setOnboarded] = useState(true) // onboarding disabled for now
+  const [onboarded, setOnboarded] = useState(() => {
+    try { return localStorage.getItem(onboardingKey) === 'true' }
+    catch { return true } // if localStorage is blocked, skip onboarding
+  })
   const {
     songs, userLists, listSongIds, loading: songsLoading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
@@ -113,7 +153,8 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     return (
       <Onboarding
         onDone={() => {
-          localStorage.setItem(onboardingKey, 'true')
+          try { localStorage.setItem(onboardingKey, 'true') }
+          catch (e) { console.error('Could not persist onboarding flag:', e) }
           setOnboarded(true)
         }}
       />
@@ -121,11 +162,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
   }
 
   if (songsLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-text-dim">Loading…</p>
-      </div>
-    )
+    return <LoadingScreen onSignOut={onSignOut} />
   }
 
   if (view.name === 'add') {
@@ -235,6 +272,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       <GroupDetail
         group={view.group}
         userId={userId}
+        userLists={userLists}
         onBack={() => setView({ name: 'library' })}
         onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
         onGetDetails={handleGetGroupDetails}
@@ -242,8 +280,10 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onUpdatePracticeList={updatePracticeList}
         onLeaveGroup={leaveGroup}
         onAddToPractice={async (list) => {
+          // Guard against double-adds (button state + this check)
+          if (userLists.some((ul) => ul.sourcePracticeListId === list.id)) return
           const plSongs = await getPracticeListSongs(list.id)
-          const userList = await createUserList(list.name, list.listType, list.concertDate)
+          const userList = await createUserList(list.name, list.listType, list.concertDate, list.id)
           for (const song of plSongs) {
             // Clone songs not already in library, then add to user list
             const ownedSong = mySongIds.has(song.id) ? song : cloneSong(song)

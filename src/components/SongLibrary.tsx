@@ -237,10 +237,31 @@ function PracticeTab({
     return songs.filter((s) => ids.has(s.id))
   }
 
-  const concertLists = userLists
-    .filter((l) => l.listType === 'concert')
-    .sort((a, b) => (a.concertDate ?? Infinity) - (b.concertDate ?? Infinity))
-  const standardLists = userLists.filter((l) => l.listType === 'standard')
+  // Resolve a personal user list against its source group practice list (if any).
+  // Personal copies sync name/date/type from the group source so changes the
+  // admin makes propagate without a re-copy.
+  function resolveListMeta(list: UserList): { name: string; listType: UserListType; concertDate: number | undefined; sourceGroupName?: string; isSynced: boolean } {
+    if (list.sourcePracticeListId) {
+      const source = allPracticeLists.find((pl) => pl.id === list.sourcePracticeListId)
+      if (source) {
+        const sourceGroup = groups.find((g) => g.id === source.groupId)
+        return {
+          name: source.name,
+          listType: source.listType,
+          concertDate: source.concertDate,
+          sourceGroupName: sourceGroup?.name,
+          isSynced: true,
+        }
+      }
+    }
+    return { name: list.name, listType: list.listType, concertDate: list.concertDate, isSynced: false }
+  }
+
+  const resolvedUserLists = userLists.map((l) => ({ list: l, meta: resolveListMeta(l) }))
+  const concertLists = resolvedUserLists
+    .filter(({ meta }) => meta.listType === 'concert')
+    .sort((a, b) => (a.meta.concertDate ?? Infinity) - (b.meta.concertDate ?? Infinity))
+  const standardLists = resolvedUserLists.filter(({ meta }) => meta.listType === 'standard')
   const hasLists = userLists.length > 0 || allPracticeLists.length > 0
 
   return (
@@ -250,17 +271,18 @@ function PracticeTab({
       {(concertLists.length > 0 || allPracticeLists.length > 0) && (
         <SectionHeader icon="🎭" label="Concert Repertoire" />
       )}
-      {concertLists.map((list) => (
+      {concertLists.map(({ list, meta }) => (
         <PracticeListCard
           key={list.id}
-          name={list.name}
+          name={meta.name}
+          subtitle={meta.isSynced ? `Synced from ${meta.sourceGroupName ?? 'group'}` : undefined}
           listType="concert"
           listSongs={getListSongs(list.id, false)}
-          concertDate={list.concertDate}
+          concertDate={meta.concertDate}
           now={now}
           expanded={expandedId === list.id}
           loading={false}
-          isOwner
+          isOwner={!meta.isSynced /* synced copies can't be edited locally */}
           onToggleExpand={() => toggleExpand(list.id)}
           onStudy={onStudy}
           onOpen={onOpen}
@@ -268,7 +290,8 @@ function PracticeTab({
           onUpdateList={(patch) => onUpdateUserList(list.id, patch)}
         />
       ))}
-      {allPracticeLists.filter((l) => l.listType === 'concert').map((list) => {
+      {/* Group practice lists not already shown as a personal copy */}
+      {allPracticeLists.filter((l) => l.listType === 'concert' && !userLists.some((ul) => ul.sourcePracticeListId === l.id)).map((list) => {
         const group = groups.find((g) => g.id === list.groupId)
         return (
           <PracticeListCard
@@ -295,7 +318,7 @@ function PracticeTab({
       {(standardLists.length > 0 || allPracticeLists.some((l) => l.listType === 'standard')) && (
         <SectionHeader icon="🎵" label="Standard Repertoire" />
       )}
-      {allPracticeLists.filter((l) => l.listType === 'standard').map((list) => {
+      {allPracticeLists.filter((l) => l.listType === 'standard' && !userLists.some((ul) => ul.sourcePracticeListId === l.id)).map((list) => {
         const group = groups.find((g) => g.id === list.groupId)
         return (
           <PracticeListCard
@@ -317,17 +340,18 @@ function PracticeTab({
           />
         )
       })}
-      {standardLists.map((list) => (
+      {standardLists.map(({ list, meta }) => (
         <PracticeListCard
           key={list.id}
-          name={list.name}
+          name={meta.name}
+          subtitle={meta.isSynced ? `Synced from ${meta.sourceGroupName ?? 'group'}` : undefined}
           listType="standard"
           listSongs={getListSongs(list.id, false)}
           concertDate={undefined}
           now={now}
           expanded={expandedId === list.id}
           loading={false}
-          isOwner
+          isOwner={!meta.isSynced}
           onToggleExpand={() => toggleExpand(list.id)}
           onStudy={onStudy}
           onOpen={onOpen}
