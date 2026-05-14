@@ -72,9 +72,7 @@ export default function App() {
 
 function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
   const onboardingKey = `lyrico_onboarded_${userId}`
-  const [onboarded, setOnboarded] = useState(
-    () => localStorage.getItem(onboardingKey) === 'true',
-  )
+  const [onboarded, setOnboarded] = useState(true) // onboarding disabled for now
   const {
     songs, userLists, listSongIds, loading: songsLoading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
