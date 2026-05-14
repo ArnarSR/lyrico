@@ -4,6 +4,7 @@ import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
 import { useGroups } from './hooks/useGroups'
 import { useProfile } from './hooks/useProfile'
+import { useStudyStats } from './hooks/useStudyStats'
 import { Auth } from './components/Auth'
 import { Profile } from './components/Profile'
 import { Onboarding } from './components/Onboarding'
@@ -129,6 +130,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   } = useGroups(userId)
   const { profile, updateProfile } = useProfile(userId)
+  const { streak, todayCount, dailyGoal, markCardReviewed } = useStudyStats()
   const [view, setViewRaw] = useState<View>({ name: 'library' })
   const setView = useCallback((v: View | ((prev: View) => View)) => {
     setViewRaw((prev) => {
@@ -216,7 +218,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         song={song}
         activeCards={activeCards}
         onExit={() => setView(view.returnTo ?? { name: 'stats', songId: view.songId })}
-        onCardReviewed={(card) => updateCard(song.id, card)}
+        onCardReviewed={(card) => { updateCard(song.id, card); markCardReviewed() }}
       />
     )
   }
@@ -345,6 +347,9 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       onSignOut={onSignOut}
       onOpenProfile={() => setView({ name: 'profile' })}
       profileInitial={(profile?.displayName ?? userEmail ?? '?').slice(0, 1).toUpperCase()}
+      streak={streak}
+      todayCount={todayCount}
+      dailyGoal={dailyGoal}
       onOpenGroup={(group) => setView({ name: 'group', group })}
       onCreateGroup={createGroup}
       onJoinGroup={joinGroup}

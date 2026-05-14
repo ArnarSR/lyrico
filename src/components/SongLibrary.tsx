@@ -7,6 +7,7 @@ import { CreateListForm } from './CreateListForm'
 import { formatDateInput, parseDateInput } from '../lib/dates'
 import { GroupsTab } from './GroupsTab'
 import { FeedbackModal } from './FeedbackModal'
+import { StudyStatsBanner } from './StudyStatsBanner'
 
 type Tab = 'practice' | 'mine' | 'lists' | 'groups'
 
@@ -23,6 +24,9 @@ interface SongLibraryProps {
   onSignOut: () => void
   onOpenProfile: () => void
   profileInitial: string
+  streak: number
+  todayCount: number
+  dailyGoal: number
   onOpenGroup: (group: Group) => void
   onCreateGroup: (name: string, description?: string) => Promise<unknown>
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
@@ -56,6 +60,7 @@ function formatRelative(now: number, ts?: number): string {
 export function SongLibrary({
   songs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
   onOpen, onStudy, onAdd, onSignOut, onOpenProfile, profileInitial,
+  streak, todayCount, dailyGoal,
   onOpenGroup, onCreateGroup, onJoinGroup, onTogglePublic, onToggleKnown,
   onGetPracticeListSongs, onCreateUserList, onUpdateUserList, onDeleteUserList,
   onAddSongToUserList, onRemoveSongFromUserList, onOpenPracticeList,
@@ -94,6 +99,18 @@ export function SongLibrary({
           </div>
         }
       />
+
+      {tab === 'practice' && (
+        <StudyStatsBanner
+          streak={streak}
+          todayCount={todayCount}
+          dailyGoal={dailyGoal}
+          userLists={userLists}
+          allPracticeLists={allPracticeLists}
+          songs={songs}
+          listSongIds={listSongIds}
+        />
+      )}
 
       {/* Tab bar */}
       <div className="mb-5 flex gap-1 rounded-xl border border-border bg-bg-soft p-1">
