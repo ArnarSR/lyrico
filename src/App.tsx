@@ -237,6 +237,15 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onCreatePracticeList={(groupId, name, listType, concertDate) => createPracticeList(groupId, name, listType, concertDate)}
         onUpdatePracticeList={updatePracticeList}
         onLeaveGroup={leaveGroup}
+        onAddToPractice={async (list) => {
+          const plSongs = await getPracticeListSongs(list.id)
+          const userList = await createUserList(list.name, list.listType, list.concertDate)
+          for (const song of plSongs) {
+            // Clone songs not already in library, then add to user list
+            const ownedSong = mySongIds.has(song.id) ? song : cloneSong(song)
+            await addSongToUserList(userList.id, ownedSong.id)
+          }
+        }}
       />
     )
   }

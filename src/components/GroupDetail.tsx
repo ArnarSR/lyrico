@@ -13,6 +13,7 @@ interface GroupDetailProps {
   onCreatePracticeList: (groupId: string, name: string, listType: UserListType, concertDate?: number) => Promise<PracticeList>
   onUpdatePracticeList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
   onLeaveGroup: (groupId: string) => Promise<void>
+  onAddToPractice: (list: PracticeList) => Promise<void>
 }
 
 const DAY_MS = 86_400_000
@@ -20,7 +21,7 @@ function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 
 export function GroupDetail({
   group, userId, onBack, onOpenPracticeList,
-  onGetDetails, onCreatePracticeList, onUpdatePracticeList, onLeaveGroup,
+  onGetDetails, onCreatePracticeList, onUpdatePracticeList, onLeaveGroup, onAddToPractice,
 }: GroupDetailProps) {
   const [members, setMembers] = useState<GroupMember[]>([])
   const [practiceLists, setPracticeLists] = useState<PracticeList[]>([])
@@ -29,6 +30,8 @@ export function GroupDetail({
   const [codeCopied, setCodeCopied] = useState(false)
   const [editingDateListId, setEditingDateListId] = useState<string | null>(null)
   const [editDateValue, setEditDateValue] = useState('')
+  const [addingToPractice, setAddingToPractice] = useState<Set<string>>(new Set())
+  const [addedToPractice, setAddedToPractice] = useState<Set<string>>(new Set())
 
   const isAdmin = members.find((m) => m.userId === userId)?.role === 'admin'
 
@@ -63,36 +66,66 @@ export function GroupDetail({
     .sort((a, b) => (a.concertDate ?? Infinity) - (b.concertDate ?? Infinity))
   const standardLists = practiceLists.filter((l) => l.listType === 'standard')
 
+  async function handleAddToPractice(e: React.MouseEvent, list: PracticeList) {
+    e.stopPropagation()
+    setAddingToPractice((prev) => new Set(prev).add(list.id))
+    try {
+      await onAddToPractice(list)
+      setAddedToPractice((prev) => new Set(prev).add(list.id))
+    } catch (err) {
+      console.error('Failed to add to practice:', err)
+    } finally {
+      setAddingToPractice((prev) => { const s = new Set(prev); s.delete(list.id); return s })
+    }
+  }
+
   function renderList(list: PracticeList) {
     const daysLeft = list.listType === 'concert' && list.concertDate ? daysUntil(list.concertDate) : null
     const dColor = daysLeft === null ? '' : daysLeft <= 7 ? 'text-wrong' : daysLeft <= 30 ? 'text-accent' : 'text-text-dim'
     const isEditingDate = editingDateListId === list.id
+    const isAdding = addingToPractice.has(list.id)
+    const isAdded = addedToPractice.has(list.id)
 
     return (
       <li key={list.id} className={`overflow-hidden rounded-xl border bg-bg-soft ${list.listType === 'concert' ? 'border-accent/25' : 'border-border'}`}>
-        <button
-          type="button"
+        <div
           onClick={() => onOpenPracticeList(list)}
-          className="w-full px-4 py-3 text-left"
+          className="w-full cursor-pointer px-4 py-3 text-left"
         >
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm text-text">{list.name}</p>
-            <span className="shrink-0 text-xs text-text-dim/60">
-              {list.listType === 'concert' ? '🎭' : '🎵'}
-            </span>
-          </div>
-          {list.listType === 'concert' && (
-            <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs">
-              {daysLeft !== null ? (
-                <span className={dColor}>
-                  🗓 {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Concert today!' : 'Concert passed'}
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate text-sm text-text">{list.name}</p>
+                <span className="shrink-0 text-xs text-text-dim/60">
+                  {list.listType === 'concert' ? '🎭' : '🎵'}
                 </span>
-              ) : (
-                <span className="text-wrong/70">No concert date set</span>
+              </div>
+              {list.listType === 'concert' && (
+                <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs">
+                  {daysLeft !== null ? (
+                    <span className={dColor}>
+                      🗓 {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Concert today!' : 'Concert passed'}
+                    </span>
+                  ) : (
+                    <span className="text-wrong/70">No concert date set</span>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </button>
+            <button
+              type="button"
+              disabled={isAdding || isAdded}
+              onClick={(e) => isAdded ? e.stopPropagation() : handleAddToPractice(e, list)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs transition-colors ${
+                isAdded
+                  ? 'border border-correct/30 text-correct'
+                  : 'border border-accent bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50'
+              }`}
+            >
+              {isAdding ? 'Adding…' : isAdded ? '✓ Added' : '+ Practice'}
+            </button>
+          </div>
+        </div>
 
         {/* Inline date editor for admins on concert lists */}
         {isAdmin && list.listType === 'concert' && (
