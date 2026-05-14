@@ -420,7 +420,10 @@ function PracticeListCard({
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
             {readiness !== null && (
-              <span className={`text-sm font-medium ${readinessColor}`}>{readiness}%</span>
+              <span className={`text-sm font-medium ${readinessColor}`}>
+                <span className="text-text-dim/70">{listType === 'concert' ? 'Concert readiness' : 'Repertoire readiness'} </span>
+                {readiness}%
+              </span>
             )}
             <span className="text-xs text-text-dim">{expanded ? '▾' : '▸'}</span>
           </div>
