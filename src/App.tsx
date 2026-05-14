@@ -70,7 +70,17 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
     })
   }, [])
 
-  // Must be after all hooks
+  // These hooks must be before any early returns (React rules of hooks)
+  useEffect(() => {
+    if (songsLoading) return
+    if ('songId' in view && !getSong(view.songId)) {
+      setView({ name: 'library' })
+    }
+  }, [songsLoading, view, getSong, setView])
+
+  const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
+  const mySongIds = new Set(songs.map((s) => s.id))
+
   if (!onboarded) {
     return (
       <Onboarding
@@ -81,17 +91,6 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       />
     )
   }
-
-  const mySongIds = new Set(songs.map((s) => s.id))
-
-  useEffect(() => {
-    if (songsLoading) return
-    if ('songId' in view && !getSong(view.songId)) {
-      setView({ name: 'library' })
-    }
-  }, [songsLoading, view, getSong])
-
-  const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
 
   if (songsLoading) {
     return (
