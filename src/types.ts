@@ -98,4 +98,5 @@ export interface UserList {
   createdAt: number
   listType: UserListType
   concertDate?: number // epoch ms — only meaningful for 'concert' lists
+  sourcePracticeListId?: string // set when copied from a group PracticeList
 }

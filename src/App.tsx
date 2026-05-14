@@ -272,6 +272,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       <GroupDetail
         group={view.group}
         userId={userId}
+        userLists={userLists}
         onBack={() => setView({ name: 'library' })}
         onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
         onGetDetails={handleGetGroupDetails}
@@ -279,8 +280,10 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onUpdatePracticeList={updatePracticeList}
         onLeaveGroup={leaveGroup}
         onAddToPractice={async (list) => {
+          // Guard against double-adds (button state + this check)
+          if (userLists.some((ul) => ul.sourcePracticeListId === list.id)) return
           const plSongs = await getPracticeListSongs(list.id)
-          const userList = await createUserList(list.name, list.listType, list.concertDate)
+          const userList = await createUserList(list.name, list.listType, list.concertDate, list.id)
           for (const song of plSongs) {
             // Clone songs not already in library, then add to user list
             const ownedSong = mySongIds.has(song.id) ? song : cloneSong(song)

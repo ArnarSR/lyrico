@@ -55,6 +55,7 @@ interface UserListRow {
   created_at: number
   list_type: string
   concert_date: number | null
+  source_practice_list_id?: string | null
 }
 
 interface UserListSongRow {
@@ -166,7 +167,7 @@ export function useStorage(userId: string) {
         setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
 
         const lists = (listsRes.data ?? []) as UserListRow[]
-        setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'standard', concertDate: r.concert_date ?? undefined })))
+        setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'standard', concertDate: r.concert_date ?? undefined, sourcePracticeListId: r.source_practice_list_id ?? undefined })))
 
         if (lists.length > 0) {
           const { data: lsRows } = await supabase
@@ -317,11 +318,28 @@ export function useStorage(userId: string) {
 
   // ── Personal lists ─────────────────────────────────────────────────────────
 
-  const createUserList = useCallback(async (name: string, listType: UserListType = 'standard', concertDate?: number): Promise<UserList> => {
-    const row: UserListRow = { id: uid(), user_id: userId, name: name.trim(), created_at: Date.now(), list_type: listType, concert_date: concertDate ?? null }
+  const createUserList = useCallback(async (
+    name: string,
+    listType: UserListType = 'standard',
+    concertDate?: number,
+    sourcePracticeListId?: string,
+  ): Promise<UserList> => {
+    const row: UserListRow = {
+      id: uid(),
+      user_id: userId,
+      name: name.trim(),
+      created_at: Date.now(),
+      list_type: listType,
+      concert_date: concertDate ?? null,
+      source_practice_list_id: sourcePracticeListId ?? null,
+    }
     const { error } = await supabase.from('user_lists').insert(row)
     if (error) { console.error('createUserList:', error); throw error }
-    const list: UserList = { id: row.id, userId, name: row.name, createdAt: row.created_at, listType, concertDate: row.concert_date ?? undefined }
+    const list: UserList = {
+      id: row.id, userId, name: row.name, createdAt: row.created_at,
+      listType, concertDate: row.concert_date ?? undefined,
+      sourcePracticeListId: sourcePracticeListId ?? undefined,
+    }
     setUserLists((prev) => [...prev, list])
     setListSongIds((prev) => new Map(prev).set(list.id, new Set()))
     return list

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Group, GroupMember, PracticeList, UserListType } from '../types'
+import type { Group, GroupMember, PracticeList, UserList, UserListType } from '../types'
 import { Header, Shell } from './Shell'
 import { CreateListForm } from './CreateListForm'
 import { formatDateInput, parseDateInput } from '../lib/dates'
@@ -7,6 +7,7 @@ import { formatDateInput, parseDateInput } from '../lib/dates'
 interface GroupDetailProps {
   group: Group
   userId: string
+  userLists: UserList[]
   onBack: () => void
   onOpenPracticeList: (list: PracticeList) => void
   onGetDetails: (groupId: string) => Promise<{ members: GroupMember[]; practiceLists: PracticeList[] }>
@@ -20,9 +21,11 @@ const DAY_MS = 86_400_000
 function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 
 export function GroupDetail({
-  group, userId, onBack, onOpenPracticeList,
+  group, userId, userLists, onBack, onOpenPracticeList,
   onGetDetails, onCreatePracticeList, onUpdatePracticeList, onLeaveGroup, onAddToPractice,
 }: GroupDetailProps) {
+  // Map of group practice list id → user's personal list copying it (if any)
+  const addedSources = new Set(userLists.map((ul) => ul.sourcePracticeListId).filter((id): id is string => !!id))
   const [members, setMembers] = useState<GroupMember[]>([])
   const [practiceLists, setPracticeLists] = useState<PracticeList[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,7 +87,7 @@ export function GroupDetail({
     const dColor = daysLeft === null ? '' : daysLeft <= 7 ? 'text-wrong' : daysLeft <= 30 ? 'text-accent' : 'text-text-dim'
     const isEditingDate = editingDateListId === list.id
     const isAdding = addingToPractice.has(list.id)
-    const isAdded = addedToPractice.has(list.id)
+    const isAdded = addedToPractice.has(list.id) || addedSources.has(list.id)
 
     return (
       <li key={list.id} className={`overflow-hidden rounded-xl border bg-bg-soft ${list.listType === 'concert' ? 'border-accent/25' : 'border-border'}`}>
