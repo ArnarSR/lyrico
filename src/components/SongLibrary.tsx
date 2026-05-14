@@ -198,6 +198,24 @@ function PracticeTab({
   const [fetchingId, setFetchingId] = useState<string | null>(null)
   const [showNewList, setShowNewList] = useState(false)
 
+  // Prefetch songs for every group practice list so readiness shows on all cards
+  useEffect(() => {
+    let cancelled = false
+    const toFetch = allPracticeLists.filter((l) => !fetchedSongs.has(l.id))
+    if (toFetch.length === 0) return
+    Promise.all(
+      toFetch.map((l) => onGetPracticeListSongs(l.id).then((s) => [l.id, s] as const)),
+    ).then((results) => {
+      if (cancelled) return
+      setFetchedSongs((prev) => {
+        const map = new Map(prev)
+        for (const [id, s] of results) map.set(id, s)
+        return map
+      })
+    })
+    return () => { cancelled = true }
+  }, [allPracticeLists, onGetPracticeListSongs, fetchedSongs])
+
   function toggleExpand(id: string) {
     const next = expandedId === id ? null : id
     setExpandedId(next)
