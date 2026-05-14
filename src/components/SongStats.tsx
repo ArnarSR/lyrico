@@ -117,7 +117,7 @@ export function SongStats({
           <p className="text-xs text-text-dim">Hides it from "Now Practicing"</p>
         </div>
         <div className={`relative h-6 w-11 rounded-full transition-colors ${song.isKnown ? 'bg-correct' : 'bg-border'}`}>
-          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${song.isKnown ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${song.isKnown ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
         </div>
       </button>
 
@@ -172,7 +172,7 @@ export function SongStats({
             <p className="text-xs text-text-dim">Visible to all Lyrico users</p>
           </div>
           <div className={`relative h-6 w-11 rounded-full transition-colors ${song.isPublic ? 'bg-accent' : 'bg-border'}`}>
-            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${song.isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${song.isPublic ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
           </div>
         </button>
 
