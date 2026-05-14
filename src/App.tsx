@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useState } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
 import { useGroups } from './hooks/useGroups'
@@ -28,6 +29,27 @@ type View =
   | { name: 'group'; group: Group }
   | { name: 'practice-list'; list: PracticeList }
 
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('App crash:', error, info) }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
+          <p className="text-lg text-text">Something went wrong</p>
+          <p className="max-w-sm text-sm text-text-dim">{this.state.error.message}</p>
+          <button onClick={() => { this.setState({ error: null }); window.location.reload() }}
+            className="rounded-full border border-accent bg-accent/15 px-6 py-2 text-accent">
+            Reload
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth()
 
@@ -41,7 +63,11 @@ export default function App() {
 
   if (!user) return <Auth />
 
-  return <AppInner userId={user.id} onSignOut={signOut} />
+  return (
+    <ErrorBoundary>
+      <AppInner userId={user.id} onSignOut={signOut} />
+    </ErrorBoundary>
+  )
 }
 
 function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {

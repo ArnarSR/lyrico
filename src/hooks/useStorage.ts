@@ -141,43 +141,51 @@ export function useStorage(userId: string) {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [songsRes, cardsRes, publicRes, listsRes] = await Promise.all([
-        supabase.from('songs').select('*').order('created_at', { ascending: false }),
-        supabase.from('cards').select('*'),
-        supabase.from('songs').select('id,user_id,title,composer,voice_part,lyrics,audio_url,audio_name,concert_date,created_at,is_public')
-          .eq('is_public', true)
-          .neq('user_id', userId)
-          .order('created_at', { ascending: false }),
-        supabase.from('user_lists').select('*').eq('user_id', userId).order('created_at'),
-      ])
-      if (cancelled) return
-      if (songsRes.error) { console.error(songsRes.error); setLoading(false); return }
+      try {
+        const [songsRes, cardsRes, publicRes, listsRes] = await Promise.all([
+          supabase.from('songs').select('*').order('created_at', { ascending: false }),
+          supabase.from('cards').select('*'),
+          supabase.from('songs').select('id,user_id,title,composer,voice_part,lyrics,audio_url,audio_name,concert_date,created_at,is_public')
+            .eq('is_public', true)
+            .neq('user_id', userId)
+            .order('created_at', { ascending: false }),
+          supabase.from('user_lists').select('*').eq('user_id', userId).order('created_at'),
+        ])
+        if (cancelled) return
 
-      const songRows = songsRes.data as SongRow[]
-      const cardRows = cardsRes.data as CardRow[]
-      const ownSongs = songRows.filter((r) => r.user_id === userId)
-      setSongs(ownSongs.map((sr) => buildSong(sr, cardRows)))
-      setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
+        if (songsRes.error) console.error('useStorage: songs query error:', songsRes.error)
+        if (cardsRes.error) console.error('useStorage: cards query error:', cardsRes.error)
+        if (publicRes.error) console.error('useStorage: public songs query error:', publicRes.error)
+        if (listsRes.error) console.error('useStorage: user_lists query error:', listsRes.error)
 
-      const lists = (listsRes.data ?? []) as UserListRow[]
-      setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'standard', concertDate: r.concert_date ?? undefined })))
+        const songRows = (songsRes.data ?? []) as SongRow[]
+        const cardRows = (cardsRes.data ?? []) as CardRow[]
+        const ownSongs = songRows.filter((r) => r.user_id === userId)
+        setSongs(ownSongs.map((sr) => buildSong(sr, cardRows)))
+        setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
 
-      if (lists.length > 0) {
-        const { data: lsRows } = await supabase
-          .from('user_list_songs')
-          .select('list_id,song_id')
-          .in('list_id', lists.map((l) => l.id))
-        if (!cancelled) {
-          const map = new Map<string, Set<string>>()
-          for (const r of (lsRows ?? []) as UserListSongRow[]) {
-            if (!map.has(r.list_id)) map.set(r.list_id, new Set())
-            map.get(r.list_id)!.add(r.song_id)
+        const lists = (listsRes.data ?? []) as UserListRow[]
+        setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'standard', concertDate: r.concert_date ?? undefined })))
+
+        if (lists.length > 0) {
+          const { data: lsRows } = await supabase
+            .from('user_list_songs')
+            .select('list_id,song_id')
+            .in('list_id', lists.map((l) => l.id))
+          if (!cancelled) {
+            const map = new Map<string, Set<string>>()
+            for (const r of (lsRows ?? []) as UserListSongRow[]) {
+              if (!map.has(r.list_id)) map.set(r.list_id, new Set())
+              map.get(r.list_id)!.add(r.song_id)
+            }
+            setListSongIds(map)
           }
-          setListSongIds(map)
         }
+      } catch (err) {
+        console.error('useStorage: unexpected error during load:', err)
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-
-      setLoading(false)
     }
     load()
     return () => { cancelled = true }
