@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Card, Song } from '../types'
-import { useSM2 } from '../hooks/useSM2'
+import { cardMastery, useSM2 } from '../hooks/useSM2'
 import { buildSegments, buildSegmentsForWords, getBlankedWords } from '../lib/blanks'
 import type { Segment } from '../lib/blanks'
 import { normalize, scoreAnswer } from '../lib/scoring'
+import { trackStudyStarted, trackStudyCompleted, trackStudyExited } from '../lib/analytics'
 import { Feedback } from './Feedback'
 import { Header, IconButton, Shell } from './Shell'
 
@@ -22,7 +23,7 @@ export function StudySession({
   onExit,
   onCardReviewed,
 }: StudySessionProps) {
-  const { review, isMastered } = useSM2()
+  const { review } = useSM2()
   // activeCards is the working set for this session (all or a single verse).
   const activeCards = activeProp ?? song.cards
 
@@ -39,6 +40,25 @@ export function StudySession({
       .filter((c) => c.nextDue <= now)
       .sort((a, b) => a.nextDue - b.nextDue)
   })
+
+  const [startTime] = useState(Date.now)
+  const [cardsReviewedCount, setCardsReviewedCount] = useState(0)
+  const [sessionComplete, setSessionComplete] = useState(false)
+
+  // Track session start
+  useEffect(() => {
+    trackStudyStarted(song.id, sessionCards.length, activeProp ? 'verse' : 'full')
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleExit() {
+    if (sessionComplete) {
+      trackStudyCompleted(song.id, cardsReviewedCount, Date.now() - startTime)
+    } else {
+      const remaining = effectiveSession.filter((c) => !sessionDone.has(c.id)).length + repeatQueue.length
+      trackStudyExited(song.id, cardsReviewedCount, remaining)
+    }
+    onExit()
+  }
 
   // Overrides the schedule — user chose to practice even though nothing is due.
   const [overrideAll, setOverrideAll] = useState(false)
@@ -114,10 +134,40 @@ export function StudySession({
     return () => cancelAnimationFrame(id)
   }, [current?.id, checked, isInline])
 
-  const mastered = activeCards.filter(isMastered).length
-  const progress = activeCards.length === 0 ? 0 : (mastered / activeCards.length) * 100
+  const progress = activeCards.length === 0 ? 0
+    : activeCards.reduce((sum, c) => sum + cardMastery(c), 0) / activeCards.length
+
+  // Milestone celebration toast
+  const [sessionStartMastery] = useState(() =>
+    activeCards.length === 0 ? 0
+      : Math.round(activeCards.reduce((sum, c) => sum + cardMastery(c), 0) / activeCards.length),
+  )
+  const prevMasteryRef = useRef(sessionStartMastery)
+  const [milestone, setMilestone] = useState<{ icon: string; text: string; sub: string } | null>(null)
+
+  useEffect(() => {
+    if (activeCards.length === 0) return
+    const current = Math.round(activeCards.reduce((sum, c) => sum + cardMastery(c), 0) / activeCards.length)
+    const prev = prevMasteryRef.current
+    const MILESTONES = [
+      { threshold: 100, icon: '🎉', text: 'Song mastered!', sub: 'Every line is locked in.' },
+      { threshold: 75, icon: '⭐', text: '75% there!', sub: 'The hard part is behind you.' },
+      { threshold: 50, icon: '🎵', text: 'Halfway there!', sub: 'Keep that momentum going.' },
+      { threshold: 25, icon: '🌱', text: 'Getting started!', sub: 'Your first lines are sticking.' },
+    ]
+    const crossed = MILESTONES.filter((m) => prev < m.threshold && current >= m.threshold)
+    if (crossed.length > 0) setMilestone(crossed[0])
+    prevMasteryRef.current = current
+  }, [activeCards])
+
+  useEffect(() => {
+    if (!milestone) return
+    const t = setTimeout(() => setMilestone(null), 2800)
+    return () => clearTimeout(t)
+  }, [milestone])
 
   if (!current) {
+    if (!sessionComplete && cardsReviewedCount > 0) setSessionComplete(true)
     const isEmpty = activeCards.length === 0
     const nothingDue = !isEmpty && sessionCards.length === 0
     const nextDue = nothingDue
@@ -132,7 +182,7 @@ export function StudySession({
         <Header
           title={song.title}
           subtitle="Study session"
-          left={<BackButton onClick={onExit} />}
+          left={<BackButton onClick={handleExit} />}
         />
         {isEmpty ? (
           <p className="mt-8 text-center text-text-dim">This song has no lines yet.</p>
@@ -150,28 +200,38 @@ export function StudySession({
             </button>
             <button
               type="button"
-              onClick={onExit}
+              onClick={handleExit}
               className="rounded-full border border-border px-6 py-2.5 text-sm text-text-dim hover:text-text"
             >
               Back to library
             </button>
           </div>
-        ) : (
-          <div className="mt-12 flex flex-col items-center gap-3 text-center">
-            <p className="text-5xl text-accent">✓</p>
-            <p className="text-xl text-text">Session complete</p>
-            <p className="text-text-dim">
-              {sessionCards.length} line{sessionCards.length !== 1 ? 's' : ''} reviewed · {mastered}/{activeCards.length} mastered
-            </p>
-            <button
-              type="button"
-              onClick={onExit}
-              className="mt-4 rounded-full border border-accent bg-accent/15 px-6 py-3 text-accent hover:bg-accent/25"
-            >
-              Back to library
-            </button>
-          </div>
-        )}
+        ) : (() => {
+          const pct = Math.round(progress)
+          const isFullyMastered = pct === 100
+          return (
+            <div className="mt-12 flex flex-col items-center gap-3 text-center">
+              <p className="text-5xl">{isFullyMastered ? '🎉' : '✓'}</p>
+              <p className="text-xl text-text">{isFullyMastered ? 'Song mastered!' : 'Session complete'}</p>
+              <p className="text-text-dim">
+                {cardsReviewedCount} line{cardsReviewedCount !== 1 ? 's' : ''} reviewed
+              </p>
+              {/* Stage breakdown summary */}
+              <div className="mt-2 w-full max-w-xs rounded-2xl border border-border bg-bg-soft px-4 py-3">
+                <p className="mb-2 text-xs uppercase tracking-[0.15em] text-text-dim">Song progress</p>
+                <StageMiniBar cards={activeCards} />
+                <p className={`mt-2 text-2xl font-medium ${pct < 50 ? 'text-wrong' : pct < 80 ? 'text-accent' : 'text-correct'}`}>{pct}%</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleExit}
+                className="mt-4 rounded-full border border-accent bg-accent/15 px-6 py-3 text-accent hover:bg-accent/25"
+              >
+                Back to library
+              </button>
+            </div>
+          )
+        })()}
       </Shell>
     )
   }
@@ -219,6 +279,7 @@ export function StudySession({
     if (!checked) return
     const updated = review(checked.card, checked.quality, song.concertDate)
     onCardReviewed(updated)
+    setCardsReviewedCount((n) => n + 1)
     if (checked.quality < 3) {
       const entry: RepeatEntry = {
         id: checked.card.id,
@@ -249,10 +310,20 @@ export function StudySession({
 
   return (
     <Shell>
+      {/* Milestone toast */}
+      {milestone && (
+        <div className="pointer-events-none fixed inset-x-4 top-16 z-50 flex justify-center">
+          <div className="rounded-2xl bg-accent px-6 py-4 text-center shadow-2xl">
+            <p className="text-xl font-semibold text-bg">{milestone.icon} {milestone.text}</p>
+            <p className="mt-0.5 text-sm text-bg/70">{milestone.sub}</p>
+          </div>
+        </div>
+      )}
+
       <Header
         title={song.title}
-        subtitle={`${DIFFICULTY_LABEL[current.difficulty]} · ${mastered}/${activeCards.length} mastered`}
-        left={<BackButton onClick={onExit} />}
+        subtitle={`${DIFFICULTY_LABEL[current.difficulty]} · ${Math.round(progress)}% mastered`}
+        left={<BackButton onClick={handleExit} />}
         right={song.audioUrl ? <AudioToggle src={song.audioUrl} /> : undefined}
       />
 
@@ -377,17 +448,69 @@ export function StudySession({
           </button>
         )}
       </div>
+
+      {/* Keyboard hints */}
+      <p className="mt-3 hidden text-center text-xs text-text-dim/60 sm:block">
+        {isInline ? (
+          <>Press <Kbd>Space</Kbd> for next word · <Kbd>Enter</Kbd> to {checked ? 'continue' : 'check'}</>
+        ) : (
+          <>Press <Kbd>Enter</Kbd> to {checked ? 'continue' : 'check'}</>
+        )}
+      </p>
     </Shell>
   )
 }
 
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="mx-0.5 rounded border border-border bg-bg-card px-1.5 py-0.5 font-mono text-[11px] text-text-dim">
+      {children}
+    </kbd>
+  )
+}
+
 function ProgressBar({ percent }: { percent: number }) {
+  const color = percent < 50 ? 'bg-wrong/70' : percent < 80 ? 'bg-accent' : 'bg-correct'
   return (
     <div className="h-1 w-full overflow-hidden rounded-full bg-bg-card">
       <div
-        className="h-full rounded-full bg-accent transition-[width] duration-300"
+        className={`h-full rounded-full transition-[width] duration-500 ${color}`}
         style={{ width: `${percent}%` }}
       />
+    </div>
+  )
+}
+
+function StageMiniBar({ cards }: { cards: Card[] }) {
+  const total = cards.length
+  if (total === 0) return null
+  const counts = [0, 25, 50, 75, 100].map((stage) => cards.filter((c) => cardMastery(c) === stage).length)
+  const colors = ['bg-bg-card', 'bg-wrong/50', 'bg-accent/60', 'bg-correct/50', 'bg-correct']
+  const labels = ['Unseen', 'Recognising', 'Learning', 'Recalling', 'Mastered']
+
+  return (
+    <div>
+      <div className="flex h-3 w-full overflow-hidden rounded-full">
+        {counts.map((count, i) =>
+          count > 0 ? (
+            <div
+              key={i}
+              className={`${colors[i]} transition-[width] duration-500`}
+              style={{ width: `${(count / total) * 100}%` }}
+            />
+          ) : null,
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 justify-center">
+        {counts.map((count, i) =>
+          count > 0 ? (
+            <span key={i} className="flex items-center gap-1 text-xs text-text-dim">
+              <span className={`inline-block h-2 w-2 rounded-full ${colors[i]}`} />
+              {labels[i]} ({count})
+            </span>
+          ) : null,
+        )}
+      </div>
     </div>
   )
 }

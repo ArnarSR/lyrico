@@ -1,26 +1,57 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useState } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
 import { useGroups } from './hooks/useGroups'
+import { useProfile } from './hooks/useProfile'
 import { Auth } from './components/Auth'
+import { Profile } from './components/Profile'
+import { Onboarding } from './components/Onboarding'
 import { SongLibrary } from './components/SongLibrary'
 import { AddSong } from './components/AddSong'
 import { StudySession } from './components/StudySession'
 import { StanzaSession } from './components/StanzaSession'
+import { TestSession } from './components/TestSession'
 import { SongStats } from './components/SongStats'
 import { GroupDetail } from './components/GroupDetail'
 import { PracticeListDetail } from './components/PracticeListDetail'
+import { EditLyrics } from './components/EditLyrics'
 import { getStanzaLineRange } from './lib/stanzas'
+import { trackSongAdded, trackSongDeleted, trackLyricsEdited, trackViewChanged, trackPracticeListStudy } from './lib/analytics'
 import type { Group, PracticeList } from './types'
 
 type View =
   | { name: 'library' }
   | { name: 'add' }
   | { name: 'stats'; songId: string }
-  | { name: 'study'; songId: string; stanzaIdx?: number }
+  | { name: 'study'; songId: string; stanzaIdx?: number; returnTo?: View }
   | { name: 'stanza'; songId: string }
+  | { name: 'test'; songId: string }
+  | { name: 'edit-lyrics'; songId: string }
   | { name: 'group'; group: Group }
   | { name: 'practice-list'; list: PracticeList }
+  | { name: 'profile' }
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('App crash:', error, info) }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
+          <p className="text-lg text-text">Something went wrong</p>
+          <p className="max-w-sm text-sm text-text-dim">{this.state.error.message}</p>
+          <button onClick={() => { this.setState({ error: null }); window.location.reload() }}
+            className="rounded-full border border-accent bg-accent/15 px-6 py-2 text-accent">
+            Reload
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth()
@@ -35,33 +66,59 @@ export default function App() {
 
   if (!user) return <Auth />
 
-  return <AppInner userId={user.id} onSignOut={signOut} />
+  return (
+    <ErrorBoundary>
+      <AppInner userId={user.id} userEmail={user.email} onSignOut={signOut} />
+    </ErrorBoundary>
+  )
 }
 
-function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
+function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail: string | undefined; onSignOut: () => void }) {
+  const onboardingKey = `lyrico_onboarded_${userId}`
+  const [onboarded, setOnboarded] = useState(true) // onboarding disabled for now
   const {
-    songs, publicSongs, userLists, listSongIds, loading: songsLoading,
-    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong,
-    createUserList, addSongToUserList, removeSongFromUserList,
+    songs, userLists, listSongIds, loading: songsLoading,
+    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
+    editSongLines,
+    createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   } = useStorage(userId)
   const {
     myGroups, allPracticeLists, loading: groupsLoading,
     createGroup, joinGroup, leaveGroup,
-    getGroupDetails, createPracticeList,
+    getGroupDetails, createPracticeList, updatePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   } = useGroups(userId)
-  const [view, setView] = useState<View>({ name: 'library' })
+  const { profile, updateProfile } = useProfile(userId)
+  const [view, setViewRaw] = useState<View>({ name: 'library' })
+  const setView = useCallback((v: View | ((prev: View) => View)) => {
+    setViewRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v
+      trackViewChanged(next.name)
+      return next
+    })
+  }, [])
 
-  const mySongIds = new Set(songs.map((s) => s.id))
-
+  // These hooks must be before any early returns (React rules of hooks)
   useEffect(() => {
     if (songsLoading) return
     if ('songId' in view && !getSong(view.songId)) {
       setView({ name: 'library' })
     }
-  }, [songsLoading, view, getSong])
+  }, [songsLoading, view, getSong, setView])
 
   const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
+  const mySongIds = new Set(songs.map((s) => s.id))
+
+  if (!onboarded) {
+    return (
+      <Onboarding
+        onDone={() => {
+          localStorage.setItem(onboardingKey, 'true')
+          setOnboarded(true)
+        }}
+      />
+    )
+  }
 
   if (songsLoading) {
     return (
@@ -77,8 +134,21 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onCancel={() => setView({ name: 'library' })}
         onSave={(input) => {
           const song = addSong(input)
-          setView({ name: 'study', songId: song.id })
+          trackSongAdded(song.id, song.cards.length, !!input.audioUrl, !!input.isPublic)
+          setView({ name: 'stats', songId: song.id })
         }}
+      />
+    )
+  }
+
+  if (view.name === 'test') {
+    const song = getSong(view.songId)
+    if (!song) return null
+    return (
+      <TestSession
+        song={song}
+        onExit={() => setView({ name: 'stats', songId: view.songId })}
+        onMasterSong={() => masterSong(view.songId)}
       />
     )
   }
@@ -108,7 +178,7 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       <StudySession
         song={song}
         activeCards={activeCards}
-        onExit={() => setView({ name: 'stats', songId: view.songId })}
+        onExit={() => setView(view.returnTo ?? { name: 'stats', songId: view.songId })}
         onCardReviewed={(card) => updateCard(song.id, card)}
       />
     )
@@ -127,15 +197,35 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onStudy={() => setView({ name: 'study', songId: song.id })}
         onStudyVerse={(stanzaIdx) => setView({ name: 'study', songId: song.id, stanzaIdx })}
         onStanzaDrill={() => setView({ name: 'stanza', songId: song.id })}
+        onTest={() => setView({ name: 'test', songId: song.id })}
+        onEditLyrics={() => setView({ name: 'edit-lyrics', songId: song.id })}
         onDelete={() => {
           deleteSong(song.id)
+          trackSongDeleted()
           setView({ name: 'library' })
         }}
         onTogglePublic={() => updateSong(song.id, { isPublic: !song.isPublic })}
+        onToggleKnown={() => updateSong(song.id, { isKnown: !song.isKnown })}
         onAddToPracticeList={(listId) => addSongToPracticeList(listId, song.id)}
         onAddToUserList={(listId) => addSongToUserList(listId, song.id)}
         onRemoveFromUserList={(listId) => removeSongFromUserList(listId, song.id)}
-        onCreateUserList={createUserList}
+        onCreateUserList={(name) => createUserList(name, 'standard')}
+      />
+    )
+  }
+
+  if (view.name === 'edit-lyrics') {
+    const song = getSong(view.songId)
+    if (!song) return null
+    return (
+      <EditLyrics
+        song={song}
+        onSave={async (lines) => {
+          await editSongLines(song.id, lines)
+          trackLyricsEdited(song.id, lines.length)
+          setView({ name: 'stats', songId: song.id })
+        }}
+        onCancel={() => setView({ name: 'stats', songId: view.songId })}
       />
     )
   }
@@ -148,8 +238,30 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onBack={() => setView({ name: 'library' })}
         onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
         onGetDetails={handleGetGroupDetails}
-        onCreatePracticeList={createPracticeList}
+        onCreatePracticeList={(groupId, name, listType, concertDate) => createPracticeList(groupId, name, listType, concertDate)}
+        onUpdatePracticeList={updatePracticeList}
         onLeaveGroup={leaveGroup}
+        onAddToPractice={async (list) => {
+          const plSongs = await getPracticeListSongs(list.id)
+          const userList = await createUserList(list.name, list.listType, list.concertDate)
+          for (const song of plSongs) {
+            // Clone songs not already in library, then add to user list
+            const ownedSong = mySongIds.has(song.id) ? song : cloneSong(song)
+            await addSongToUserList(userList.id, ownedSong.id)
+          }
+        }}
+      />
+    )
+  }
+
+  if (view.name === 'profile') {
+    return (
+      <Profile
+        profile={profile}
+        email={userEmail}
+        onBack={() => setView({ name: 'library' })}
+        onUpdate={updateProfile}
+        onSignOut={onSignOut}
       />
     )
   }
@@ -170,6 +282,11 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
         onGetSongs={getPracticeListSongs}
         onAddSong={addSongToPracticeList}
         onRemoveSong={removeSongFromPracticeList}
+        onUpdateList={(patch) => updatePracticeList(view.list.id, patch)}
+        onStudy={(songId) => {
+          trackPracticeListStudy(view.list.id, songId)
+          setView({ name: 'study', songId, returnTo: view })
+        }}
       />
     )
   }
@@ -177,7 +294,6 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
   return (
     <SongLibrary
       songs={songs}
-      publicSongs={publicSongs}
       groups={myGroups}
       groupsLoading={groupsLoading}
       allPracticeLists={allPracticeLists}
@@ -187,12 +303,20 @@ function AppInner({ userId, onSignOut }: { userId: string; onSignOut: () => void
       onStudy={(id) => setView({ name: 'study', songId: id })}
       onAdd={() => setView({ name: 'add' })}
       onSignOut={onSignOut}
-      onCloneSong={cloneSong}
+      onOpenProfile={() => setView({ name: 'profile' })}
+      profileInitial={(profile?.displayName ?? userEmail ?? '?').slice(0, 1).toUpperCase()}
       onOpenGroup={(group) => setView({ name: 'group', group })}
       onCreateGroup={createGroup}
       onJoinGroup={joinGroup}
-      onAddToPracticeList={(song, listId) => addSongToPracticeList(listId, song.id)}
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
+      onToggleKnown={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isKnown: !s.isKnown }) }}
+      onGetPracticeListSongs={getPracticeListSongs}
+      onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
+      onCreateUserList={(name, listType, concertDate) => createUserList(name, listType, concertDate)}
+      onUpdateUserList={updateUserList}
+      onDeleteUserList={deleteUserList}
+      onAddSongToUserList={addSongToUserList}
+      onRemoveSongFromUserList={removeSongFromUserList}
     />
   )
 }

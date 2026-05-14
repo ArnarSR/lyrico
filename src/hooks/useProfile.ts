@@ -35,7 +35,16 @@ export function useProfile(userId: string) {
     return p
   }, [userId])
 
-  return { profile, createProfile }
+  const updateProfile = useCallback(async (patch: { displayName?: string }): Promise<void> => {
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.displayName !== undefined) dbPatch.display_name = patch.displayName.trim()
+    if (Object.keys(dbPatch).length === 0) return
+    const { error } = await supabase.from('profiles').update(dbPatch).eq('user_id', userId)
+    if (error) { console.error('updateProfile:', error); throw error }
+    setProfile((prev) => prev ? { ...prev, ...(patch.displayName !== undefined ? { displayName: patch.displayName.trim() } : {}) } : prev)
+  }, [userId])
+
+  return { profile, createProfile, updateProfile }
 }
 
 export async function fetchProfiles(userIds: string[]): Promise<Map<string, string>> {

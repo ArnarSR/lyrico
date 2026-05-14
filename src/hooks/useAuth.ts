@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import { identifyUser, resetUser, trackSignIn, trackSignOut } from '../lib/analytics'
 
 async function ensureProfile(user: User) {
   const name = (user.user_metadata?.display_name as string | undefined)
@@ -20,18 +21,25 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const u = session?.user ?? null
       setUser(u)
-      if (u) ensureProfile(u)
+      if (u) {
+        ensureProfile(u)
+        identifyUser(u.id, { email: u.email })
+      }
       setLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const u = session?.user ?? null
       setUser(u)
-      if (u) ensureProfile(u)
+      if (u) {
+        ensureProfile(u)
+        identifyUser(u.id, { email: u.email })
+        if (event === 'SIGNED_IN') trackSignIn(u.app_metadata?.provider ?? 'email')
+      }
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  const signOut = () => supabase.auth.signOut()
+  const signOut = () => { trackSignOut(); resetUser(); return supabase.auth.signOut() }
 
   return { user, loading, signOut }
 }

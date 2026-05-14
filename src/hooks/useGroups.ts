@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Group, GroupMember, PracticeList, Song } from '../types'
+import type { Group, GroupMember, PracticeList, Song, UserListType } from '../types'
 import { uid } from '../lib/id'
 import { supabase } from '../lib/supabase'
 import { fetchProfiles } from './useProfile'
+import { trackGroupCreated, trackGroupJoined, trackGroupLeft, trackPracticeListCreated } from '../lib/analytics'
 
 // ── Row types ─────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ interface MemberRow {
 }
 interface ListRow {
   id: string; group_id: string; name: string; created_by: string; created_at: number
+  list_type: string; concert_date: number | null
 }
 interface SongRow {
   id: string; user_id: string; title: string; composer: string | null
@@ -32,7 +34,7 @@ function rowToMember(r: MemberRow, names: Map<string, string>): GroupMember {
   return { groupId: r.group_id, userId: r.user_id, role: r.role as 'admin' | 'member', joinedAt: r.joined_at, displayName: names.get(r.user_id) ?? r.user_id.slice(0, 8) }
 }
 function rowToList(r: ListRow): PracticeList {
-  return { id: r.id, groupId: r.group_id, name: r.name, createdBy: r.created_by, createdAt: r.created_at }
+  return { id: r.id, groupId: r.group_id, name: r.name, createdBy: r.created_by, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'concert', concertDate: r.concert_date ?? undefined }
 }
 function rowToSong(r: SongRow): Song {
   return { id: r.id, title: r.title, composer: r.composer ?? undefined, lyrics: r.lyrics, cards: [], createdAt: r.created_at, isPublic: r.is_public, ownerId: r.user_id }
@@ -53,10 +55,11 @@ export function useGroups(userId: string) {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const { data: memberships } = await supabase
+      const { data: memberships, error: memErr } = await supabase
         .from('group_members').select('group_id').eq('user_id', userId)
 
-      if (!memberships?.length) { setMyGroups([]); setLoading(false); return }
+      if (memErr) console.error('useGroups: group_members query error:', memErr)
+      if (!memberships?.length) { setMyGroups([]); setAllPracticeLists([]); setLoading(false); return }
 
       const groupIds = memberships.map((m: { group_id: string }) => m.group_id)
 
@@ -68,6 +71,9 @@ export function useGroups(userId: string) {
           .in('group_id', groupIds)
           .order('created_at'),
       ])
+
+      if (groupsRes.error) console.error('useGroups: groups query error:', groupsRes.error)
+      if (listsRes.error) console.error('useGroups: practice_lists query error:', listsRes.error)
 
       if (!cancelled) {
         setMyGroups((groupsRes.data ?? []).map((r) => rowToGroup(r as GroupRow)))
@@ -91,27 +97,31 @@ export function useGroups(userId: string) {
 
     const group = rowToGroup(row)
     setMyGroups((prev) => [group, ...prev])
+    trackGroupCreated()
     return group
   }, [userId])
 
   const joinGroup = useCallback(async (inviteCode: string): Promise<Group | null> => {
-    const { data: rows } = await supabase
+    const { data: rows, error: lookupErr } = await supabase
       .from('groups').select('*').eq('invite_code', inviteCode.trim().toUpperCase()).limit(1)
 
+    if (lookupErr) { console.error('joinGroup lookup error:', lookupErr); throw lookupErr }
     if (!rows?.length) return null
     const group = rowToGroup(rows[0] as GroupRow)
 
     if (myGroups.some((g) => g.id === group.id)) return group
 
     const { error } = await supabase.from('group_members').insert({ group_id: group.id, user_id: userId, role: 'member', joined_at: Date.now() })
-    if (error) throw error
+    if (error) { console.error('joinGroup insert error:', error); throw error }
 
     setMyGroups((prev) => [group, ...prev])
+    trackGroupJoined()
     return group
   }, [userId, myGroups])
 
   const leaveGroup = useCallback(async (groupId: string) => {
     setMyGroups((prev) => prev.filter((g) => g.id !== groupId))
+    trackGroupLeft()
     await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId)
   }, [userId])
 
@@ -130,14 +140,31 @@ export function useGroups(userId: string) {
     }
   }, [])
 
-  const createPracticeList = useCallback(async (groupId: string, name: string): Promise<PracticeList> => {
-    const row: ListRow = { id: uid(), group_id: groupId, name: name.trim(), created_by: userId, created_at: Date.now() }
+  const createPracticeList = useCallback(async (groupId: string, name: string, listType: UserListType = 'concert', concertDate?: number): Promise<PracticeList> => {
+    const row: ListRow = { id: uid(), group_id: groupId, name: name.trim(), created_by: userId, created_at: Date.now(), list_type: listType, concert_date: concertDate ?? null }
     const { error } = await supabase.from('practice_lists').insert(row)
     if (error) throw error
     const list = rowToList(row)
     setAllPracticeLists((prev) => [...prev, list])
+    trackPracticeListCreated(listType)
     return list
   }, [userId])
+
+  const updatePracticeList = useCallback(async (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => {
+    setAllPracticeLists((prev) => prev.map((l) => {
+      if (l.id !== listId) return l
+      const updated = { ...l }
+      if (patch.name !== undefined) updated.name = patch.name
+      if (patch.listType !== undefined) updated.listType = patch.listType
+      if ('concertDate' in patch) updated.concertDate = patch.concertDate ?? undefined
+      return updated
+    }))
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.name !== undefined) dbPatch.name = patch.name.trim()
+    if (patch.listType !== undefined) dbPatch.list_type = patch.listType
+    if ('concertDate' in patch) dbPatch.concert_date = patch.concertDate ?? null
+    await supabase.from('practice_lists').update(dbPatch).eq('id', listId)
+  }, [])
 
   const deletePracticeList = useCallback(async (listId: string) => {
     await supabase.from('practice_lists').delete().eq('id', listId)
@@ -170,7 +197,7 @@ export function useGroups(userId: string) {
   return {
     myGroups, allPracticeLists, loading,
     createGroup, joinGroup, leaveGroup,
-    getGroupDetails, createPracticeList, deletePracticeList,
+    getGroupDetails, createPracticeList, updatePracticeList, deletePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   }
 }

@@ -52,6 +52,7 @@ export interface Song {
   createdAt: number
   lastStudied?: number
   isPublic?: boolean
+  isKnown?: boolean
   ownerId?: string // user_id of the song owner (set on community/practice list songs)
 }
 
@@ -84,11 +85,17 @@ export interface PracticeList {
   name: string
   createdBy: string
   createdAt: number
+  listType: UserListType
+  concertDate?: number // epoch ms
 }
+
+export type UserListType = 'concert' | 'standard'
 
 export interface UserList {
   id: string
   userId: string
   name: string
   createdAt: number
+  listType: UserListType
+  concertDate?: number // epoch ms — only meaningful for 'concert' lists
 }
