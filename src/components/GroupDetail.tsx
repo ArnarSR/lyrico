@@ -122,7 +122,7 @@ export function GroupDetail({
                   : 'border border-accent bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50'
               }`}
             >
-              {isAdding ? 'Adding…' : isAdded ? '✓ Added' : '+ Practice'}
+              {isAdding ? 'Adding…' : isAdded ? '✓ Added' : 'Add to my practice list'}
             </button>
           </div>
         </div>
