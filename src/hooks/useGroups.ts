@@ -175,12 +175,16 @@ export function useGroups(userId: string) {
       .eq('id', listId)
       .select()
     if (error || !data || data.length === 0) {
-      console.error('updatePracticeList failed:', error ?? 'no rows affected (RLS?)')
+      console.error('updatePracticeList failed:', error ?? 'no rows affected (RLS?)', { listId, dbPatch })
       if (snapshot) {
         const rollback = snapshot
         setAllPracticeLists((prev) => prev.map((l) => l.id === listId ? rollback : l))
       }
-      throw error ?? new Error('Update was rejected (likely permissions)')
+      if (error) {
+        // Re-throw the Supabase error as a real Error so .message survives
+        throw new Error(error.message || error.details || error.hint || 'Database error')
+      }
+      throw new Error('No matching practice list — likely missing UPDATE policy. Run supabase-practice-lists-update.sql in Supabase.')
     }
   }, [])
 

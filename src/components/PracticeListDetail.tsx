@@ -109,7 +109,10 @@ export function PracticeListDetail({
       setTimeout(() => setSaveStatus('idle'), 2500)
     } catch (e) {
       setSaveStatus('error')
-      setSaveError(e instanceof Error ? e.message : 'Could not save date')
+      const msg = e instanceof Error ? e.message
+        : (e && typeof e === 'object' && 'message' in e) ? String((e as { message: unknown }).message)
+        : String(e)
+      setSaveError(msg || 'Could not save date')
     }
   }
 

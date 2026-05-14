@@ -366,12 +366,15 @@ export function useStorage(userId: string) {
       .eq('id', listId)
       .select()
     if (error || !data || data.length === 0) {
-      console.error('updateUserList failed:', error ?? 'no rows affected (RLS?)')
+      console.error('updateUserList failed:', error ?? 'no rows affected (RLS?)', { listId, dbPatch })
       if (snapshot) {
         const rollback = snapshot
         setUserLists((prev) => prev.map((l) => l.id === listId ? rollback : l))
       }
-      throw error ?? new Error('Update was rejected (likely permissions)')
+      if (error) {
+        throw new Error(error.message || error.details || error.hint || 'Database error')
+      }
+      throw new Error('No matching list found — were you logged out?')
     }
   }, [])
 
