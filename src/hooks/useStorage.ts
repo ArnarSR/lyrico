@@ -4,6 +4,7 @@ import { uid } from '../lib/id'
 import { makeCard } from './useSM2'
 import { isSectionLabel } from '../lib/stanzas'
 import { supabase } from '../lib/supabase'
+import { captureException } from '../lib/analytics'
 
 export interface NewSongInput {
   title: string
@@ -183,6 +184,7 @@ export function useStorage(userId: string) {
         }
       } catch (err) {
         console.error('useStorage: unexpected error during load:', err)
+        captureException(err, { where: 'useStorage.load' })
       } finally {
         if (!cancelled) setLoading(false)
       }

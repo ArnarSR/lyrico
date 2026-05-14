@@ -15,6 +15,41 @@ export function initAnalytics() {
     persistence: 'localStorage',
     loaded: () => { initialized = true },
   })
+
+  // Global error capture — surface silent crashes in PostHog
+  window.addEventListener('error', (ev) => {
+    try {
+      posthog.capture('$exception', {
+        $exception_message: ev.message,
+        $exception_source: ev.filename,
+        $exception_lineno: ev.lineno,
+        $exception_colno: ev.colno,
+        $exception_stack_trace_raw: ev.error?.stack,
+      })
+    } catch { /* ignore */ }
+  })
+  window.addEventListener('unhandledrejection', (ev) => {
+    try {
+      const reason = ev.reason
+      posthog.capture('$exception', {
+        $exception_message: reason instanceof Error ? reason.message : String(reason),
+        $exception_stack_trace_raw: reason instanceof Error ? reason.stack : undefined,
+        $exception_unhandled_rejection: true,
+      })
+    } catch { /* ignore */ }
+  })
+}
+
+export function captureException(error: unknown, context?: Record<string, unknown>) {
+  if (!POSTHOG_KEY) return
+  try {
+    const err = error instanceof Error ? error : new Error(String(error))
+    posthog.capture('$exception', {
+      $exception_message: err.message,
+      $exception_stack_trace_raw: err.stack,
+      ...context,
+    })
+  } catch { /* ignore */ }
 }
 
 // ── Identity ─────────────────────────────────────────────────────────────────
