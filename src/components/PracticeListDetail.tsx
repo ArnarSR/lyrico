@@ -45,7 +45,11 @@ export function PracticeListDetail({
 
   // Merge: prefer user's own mastery data over the raw list song data
   const songsWithMastery = useMemo(
-    () => songs.map((s) => mySongs.find((ms) => ms.id === s.id) ?? s),
+    () => songs.map((s) =>
+      mySongs.find((ms) => ms.id === s.id) ??
+      mySongs.find((ms) => ms.sourceSongId === s.id) ??
+      s
+    ),
     [songs, mySongs],
   )
 
