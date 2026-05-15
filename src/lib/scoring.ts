@@ -1,6 +1,6 @@
 // Scoring: compare learner's attempt to the correct lyric line.
 // We normalize aggressively (lowercase, strip punctuation, collapse whitespace)
-// then compute a simple word-match ratio, which is mapped to a 0..5 SM-2 quality.
+// then compute a fuzzy word-match ratio, which is mapped to a 0..5 SM-2 quality.
 
 export function normalize(s: string): string {
   return s
@@ -17,6 +17,41 @@ export function normalize(s: string): string {
 export function tokens(s: string): string[] {
   const n = normalize(s)
   return n.length === 0 ? [] : n.split(' ')
+}
+
+// Levenshtein edit distance between two strings.
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0
+  if (a.length === 0) return b.length
+  if (b.length === 0) return a.length
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  const curr = new Array<number>(b.length + 1)
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1]
+        : 1 + Math.min(prev[j - 1], prev[j], curr[j - 1])
+    }
+    prev.splice(0, prev.length, ...curr)
+  }
+  return curr[b.length]
+}
+
+// Tolerance by word length:
+//   ≤ 3 chars  → must be exact (short particles: "og", "er", "i")
+//   4–6 chars  → 1 edit  (one typo / one old-spelling letter)
+//   7+ chars   → 2 edits (longer gammelnorsk words with more variation)
+function editThreshold(len: number): number {
+  if (len <= 3) return 0
+  if (len <= 6) return 1
+  return 2
+}
+
+export function fuzzyWordMatch(a: string, b: string): boolean {
+  if (a === b) return true
+  const maxLen = Math.max(a.length, b.length)
+  return levenshtein(a, b) <= editThreshold(maxLen)
 }
 
 export interface ScoreResult {
@@ -46,11 +81,11 @@ export function scoreAnswer(attempt: string, correct: string): ScoreResult {
   let i = 0
   let matched = 0
   for (const w of got) {
-    if (i < tgt.length && w === tgt[i]) {
+    if (i < tgt.length && fuzzyWordMatch(w, tgt[i])) {
       matched++
       i++
     } else {
-      const j = tgt.indexOf(w, i)
+      const j = tgt.findIndex((t, idx) => idx >= i && fuzzyWordMatch(w, t))
       if (j !== -1) {
         matched++
         i = j + 1
@@ -93,12 +128,12 @@ export function diffWords(
 
   let i = 0
   for (let j = 0; j < got.length; j++) {
-    if (i < tgt.length && got[j] === tgt[i]) {
+    if (i < tgt.length && fuzzyWordMatch(got[j], tgt[i])) {
       gotMatched[j] = true
       tgtMatched[i] = true
       i++
     } else {
-      const k = tgt.indexOf(got[j], i)
+      const k = tgt.findIndex((t, idx) => idx >= i && fuzzyWordMatch(got[j], t))
       if (k !== -1) {
         gotMatched[j] = true
         tgtMatched[k] = true

@@ -3,7 +3,7 @@ import type { Card, Song } from '../types'
 import { cardMastery, useSM2 } from '../hooks/useSM2'
 import { buildSegments, buildSegmentsForWords, getBlankedWords } from '../lib/blanks'
 import type { Segment } from '../lib/blanks'
-import { normalize, scoreAnswer } from '../lib/scoring'
+import { normalize, scoreAnswer, fuzzyWordMatch } from '../lib/scoring'
 import { trackStudyStarted, trackStudyCompleted, trackStudyExited } from '../lib/analytics'
 import { Feedback } from './Feedback'
 import { Header, IconButton, Shell } from './Shell'
@@ -264,7 +264,7 @@ export function StudySession({
       let bidx = 0
       for (const seg of segments) {
         if (seg.type === 'blank') {
-          if (normalize(blankValues[bidx] ?? '') !== normalize(seg.answer)) {
+          if (!fuzzyWordMatch(normalize(blankValues[bidx] ?? ''), normalize(seg.answer))) {
             wrongWords.push(seg.answer)
           }
           bidx++
@@ -338,7 +338,7 @@ export function StudySession({
               if (seg.type === 'text') return <span key={i}>{seg.value}</span>
 
               const idx = blankIdx++
-              const isCorrect = checked && normalize(blankValues[idx] ?? '') === normalize(seg.answer)
+              const isCorrect = checked && fuzzyWordMatch(normalize(blankValues[idx] ?? ''), normalize(seg.answer))
               const borderColor = !checked
                 ? 'border-accent'
                 : isCorrect
