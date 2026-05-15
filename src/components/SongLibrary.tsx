@@ -248,11 +248,7 @@ function PracticeTab({
   function getListSongs(listId: string, isGroup: boolean): Song[] {
     if (isGroup) {
       const raw = fetchedSongs.get(listId) ?? []
-      return raw.map((gs) =>
-        songs.find((s) => s.id === gs.id) ??
-        songs.find((s) => s.sourceSongId === gs.id) ??
-        gs
-      )
+      return raw.map((gs) => songs.find((s) => s.id === gs.id) ?? gs)
     }
     const ids = listSongIds.get(listId) ?? new Set<string>()
     return songs.filter((s) => ids.has(s.id))

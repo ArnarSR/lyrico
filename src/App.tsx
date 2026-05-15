@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { useStorage } from './hooks/useStorage'
@@ -122,8 +122,8 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
   })
   const {
     songs, userLists, listSongIds, loading: songsLoading,
-    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
-    editSongLines, clonedSourceIds,
+    addSong, addSongToLibrary, updateSong, updateCard, deleteSong, getSong, masterSong,
+    editSongLines,
     createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   } = useStorage(userId)
   const {
@@ -152,7 +152,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
   }, [songsLoading, view, getSong, setView])
 
   const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
-  const mySongIds = new Set(songs.map((s) => s.id))
+  const mySongIds = useMemo(() => new Set(songs.map((s) => s.id)), [songs])
 
   const celebration = justReachedGoal ? (
     <CelebrationToast
@@ -335,23 +335,9 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
           if (userLists.some((ul) => ul.sourcePracticeListId === list.id)) return
           const plSongs = await getPracticeListSongs(list.id)
           const userList = await createUserList(list.name, list.listType, list.concertDate, list.id)
-          // Track newly cloned IDs within this call so adding two lists in one session
-          // doesn't clone the same song twice before state updates propagate.
-          const sessionCloned = new Map<string, string>()
           for (const song of plSongs) {
-            let ownedId: string
-            if (mySongIds.has(song.id)) {
-              ownedId = song.id
-            } else if (clonedSourceIds.has(song.id)) {
-              ownedId = songs.find((s) => s.sourceSongId === song.id)!.id
-            } else if (sessionCloned.has(song.id)) {
-              ownedId = sessionCloned.get(song.id)!
-            } else {
-              const cloned = cloneSong(song)
-              sessionCloned.set(song.id, cloned.id)
-              ownedId = cloned.id
-            }
-            await addSongToUserList(userList.id, ownedId)
+            if (!mySongIds.has(song.id)) addSongToLibrary(song)
+            await addSongToUserList(userList.id, song.id)
           }
         }}
       />
@@ -388,7 +374,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
           if (group) setView({ name: 'group', group })
           else setView({ name: 'library' })
         }}
-        onCloneSong={cloneSong}
+        onAddSongToLibrary={addSongToLibrary}
         onGetSongs={getPracticeListSongs}
         onAddSong={addSongToPracticeList}
         onRemoveSong={removeSongFromPracticeList}

@@ -10,7 +10,7 @@ interface PracticeListDetailProps {
   mySongIds: Set<string>
   mySongs: Song[]
   onBack: () => void
-  onCloneSong: (song: Song) => void
+  onAddSongToLibrary: (song: Song) => void
   onGetSongs: (listId: string) => Promise<Song[]>
   onAddSong: (listId: string, songId: string) => Promise<void>
   onRemoveSong: (listId: string, songId: string) => Promise<void>
@@ -22,14 +22,14 @@ const DAY_MS = 86_400_000
 function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 
 export function PracticeListDetail({
-  list, userId, mySongIds, mySongs, onBack, onCloneSong, onGetSongs, onAddSong, onRemoveSong, onUpdateList, onStudy,
+  list, userId, mySongIds, mySongs, onBack, onAddSongToLibrary, onGetSongs, onAddSong, onRemoveSong, onUpdateList, onStudy,
 }: PracticeListDetailProps) {
   const [songs, setSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
   const [showPicker, setShowPicker] = useState(false)
   const [search, setSearch] = useState('')
   const [adding, setAdding] = useState<Set<string>>(new Set())
-  const [cloning, setCloning] = useState(false)
+  const [addingAll, setAddingAll] = useState(false)
   const [editingDate, setEditingDate] = useState(false)
   const [concertDate, setConcertDate] = useState<number | undefined>(list.concertDate)
   const [dateValue, setDateValue] = useState(
@@ -45,11 +45,7 @@ export function PracticeListDetail({
 
   // Merge: prefer user's own mastery data over the raw list song data
   const songsWithMastery = useMemo(
-    () => songs.map((s) =>
-      mySongs.find((ms) => ms.id === s.id) ??
-      mySongs.find((ms) => ms.sourceSongId === s.id) ??
-      s
-    ),
+    () => songs.map((s) => mySongs.find((ms) => ms.id === s.id) ?? s),
     [songs, mySongs],
   )
 
@@ -84,13 +80,13 @@ export function PracticeListDetail({
 
   const songsNotOwned = songs.filter((s) => !mySongIds.has(s.id))
 
-  async function handleCloneAll() {
+  async function handleAddAll() {
     if (songsNotOwned.length === 0) return
-    setCloning(true)
+    setAddingAll(true)
     for (const song of songsNotOwned) {
-      onCloneSong(song)
+      onAddSongToLibrary(song)
     }
-    setCloning(false)
+    setAddingAll(false)
   }
 
   async function handleRemove(songId: string) {
@@ -248,11 +244,11 @@ export function PracticeListDetail({
           </p>
           <button
             type="button"
-            disabled={cloning}
-            onClick={handleCloneAll}
+            disabled={addingAll}
+            onClick={handleAddAll}
             className="shrink-0 rounded-full border border-accent bg-accent/15 px-4 py-1.5 text-sm text-accent hover:bg-accent/25 disabled:opacity-50"
           >
-            {cloning ? 'Adding…' : 'Add all to library'}
+            {addingAll ? 'Adding…' : 'Add all to library'}
           </button>
         </div>
       )}
@@ -339,7 +335,7 @@ export function PracticeListDetail({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => onCloneSong(song)}
+                        onClick={() => onAddSongToLibrary(song)}
                         className="rounded-full border border-accent bg-accent/15 px-3 py-1.5 text-sm text-accent hover:bg-accent/25"
                       >
                         Add to library

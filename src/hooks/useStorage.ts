@@ -15,7 +15,6 @@ export interface NewSongInput {
   audioName?: string
   concertDate?: number
   isPublic?: boolean
-  sourceSongId?: string
 }
 
 // ── DB row shapes ─────────────────────────────────────────────────────────────
@@ -32,8 +31,14 @@ interface SongRow {
   concert_date: number | null
   created_at: number
   is_public: boolean
+}
+
+interface LibraryRow {
+  user_id: string
+  song_id: string
   is_known: boolean
-  source_song_id?: string | null
+  added_at: number
+  songs: SongRow
 }
 
 interface CardRow {
@@ -100,7 +105,7 @@ function cardToRow(card: Card, songId: string, userId: string): CardRow {
 
 const DAY_MS = 86_400_000
 
-function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
+function buildSong(songRow: SongRow, cardRows: CardRow[], isKnown: boolean): Song {
   const cards = cardRows
     .filter((c) => c.song_id === songRow.id)
     .sort((a, b) => a.line_index - b.line_index)
@@ -126,10 +131,9 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     cards,
     createdAt: songRow.created_at,
     isPublic: songRow.is_public,
-    isKnown: songRow.is_known,
+    isKnown,
     ownerId: songRow.user_id,
     lastStudied,
-    sourceSongId: songRow.source_song_id ?? undefined,
   }
 }
 
@@ -137,7 +141,6 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
 
 export function useStorage(userId: string) {
   const [songs, setSongs] = useState<Song[]>([])
-  const [publicSongs, setPublicSongs] = useState<Song[]>([])
   const [userLists, setUserLists] = useState<UserList[]>([])
   // listId -> Set of songIds in that list
   const [listSongIds, setListSongIds] = useState<Map<string, Set<string>>>(new Map())
@@ -147,30 +150,36 @@ export function useStorage(userId: string) {
     let cancelled = false
     async function load() {
       try {
-        const [songsRes, cardsRes, publicRes, listsRes] = await Promise.all([
-          supabase.from('songs').select('*').order('created_at', { ascending: false }),
-          supabase.from('cards').select('*'),
-          supabase.from('songs').select('id,user_id,title,composer,voice_part,lyrics,audio_url,audio_name,concert_date,created_at,is_public')
-            .eq('is_public', true)
-            .neq('user_id', userId)
-            .order('created_at', { ascending: false }),
+        const [libRes, cardsRes, listsRes] = await Promise.all([
+          supabase
+            .from('user_song_library')
+            .select('is_known, added_at, songs(*)')
+            .eq('user_id', userId),
+          supabase.from('cards').select('*').eq('user_id', userId),
           supabase.from('user_lists').select('*').eq('user_id', userId).order('created_at'),
         ])
         if (cancelled) return
 
-        if (songsRes.error) console.error('useStorage: songs query error:', songsRes.error)
+        if (libRes.error) console.error('useStorage: library query error:', libRes.error)
         if (cardsRes.error) console.error('useStorage: cards query error:', cardsRes.error)
-        if (publicRes.error) console.error('useStorage: public songs query error:', publicRes.error)
         if (listsRes.error) console.error('useStorage: user_lists query error:', listsRes.error)
 
-        const songRows = (songsRes.data ?? []) as SongRow[]
+        const libRows = (libRes.data ?? []) as LibraryRow[]
         const cardRows = (cardsRes.data ?? []) as CardRow[]
-        const ownSongs = songRows.filter((r) => r.user_id === userId)
-        setSongs(ownSongs.map((sr) => buildSong(sr, cardRows)))
-        setPublicSongs(((publicRes.data ?? []) as SongRow[]).map((sr) => buildSong(sr, [])))
+
+        setSongs(
+          libRows
+            .filter((lib) => lib.songs != null)
+            .map((lib) => buildSong(lib.songs, cardRows, lib.is_known))
+        )
 
         const lists = (listsRes.data ?? []) as UserListRow[]
-        setUserLists(lists.map((r) => ({ id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'standard', concertDate: r.concert_date ?? undefined, sourcePracticeListId: r.source_practice_list_id ?? undefined })))
+        setUserLists(lists.map((r) => ({
+          id: r.id, userId: r.user_id, name: r.name, createdAt: r.created_at,
+          listType: (r.list_type as UserListType) ?? 'standard',
+          concertDate: r.concert_date ?? undefined,
+          sourcePracticeListId: r.source_practice_list_id ?? undefined,
+        })))
 
         if (lists.length > 0) {
           const { data: lsRows } = await supabase
@@ -218,17 +227,19 @@ export function useStorage(userId: string) {
       concert_date: input.concertDate ?? null,
       created_at: now,
       is_public: input.isPublic ?? false,
-      is_known: false,
-      source_song_id: input.sourceSongId ?? null,
     }
     const cardRows = cards.map((c) => cardToRow(c, songId, userId))
+    const song: Song = buildSong(songRow, cardRows, false)
 
-    const song: Song = buildSong(songRow, cardRows)
     setSongs((prev) => [song, ...prev])
-    if (input.isPublic) setPublicSongs((prev) => [song, ...prev])
 
     supabase.from('songs').insert(songRow).then(({ error }) => {
       if (error) console.error('addSong (songs):', error)
+    })
+    supabase.from('user_song_library').insert({
+      user_id: userId, song_id: songId, is_known: false, added_at: now,
+    }).then(({ error }) => {
+      if (error) console.error('addSong (library):', error)
     })
     supabase.from('cards').insert(cardRows).then(({ error }) => {
       if (error) console.error('addSong (cards):', error)
@@ -237,38 +248,47 @@ export function useStorage(userId: string) {
     return song
   }, [userId])
 
-  const cloneSong = useCallback((source: Song): Song => {
-    return addSong({
-      title: source.title,
-      composer: source.composer,
-      voicePart: source.voicePart,
-      lyrics: source.lyrics,
-      concertDate: source.concertDate,
-      isPublic: false,
-      sourceSongId: source.id,
+  // Add an existing song (owned by someone else) to this user's library with fresh cards.
+  const addSongToLibrary = useCallback((source: Song): Song => {
+    const now = Date.now()
+    const lines = source.lyrics
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !isSectionLabel(l))
+    const freshCards: Card[] = lines.map((text, i) => makeCard(uid(), i, text, now))
+    const song: Song = { ...source, isKnown: false, cards: freshCards, lastStudied: undefined }
+
+    setSongs((prev) => [...prev, song])
+
+    supabase.from('user_song_library').insert({
+      user_id: userId, song_id: source.id, is_known: false, added_at: now,
+    }).then(({ error }) => {
+      if (error) console.error('addSongToLibrary (library):', error)
     })
-  }, [addSong])
+    supabase.from('cards').insert(freshCards.map((c) => cardToRow(c, source.id, userId))).then(({ error }) => {
+      if (error) console.error('addSongToLibrary (cards):', error)
+    })
+
+    return song
+  }, [userId])
 
   const updateSong = useCallback((songId: string, patch: { isPublic?: boolean; isKnown?: boolean }) => {
     setSongs((prev) => prev.map((s) => s.id === songId ? { ...s, ...patch } : s))
     if (patch.isPublic !== undefined) {
-      if (patch.isPublic) {
-        setSongs((current) => {
-          const song = current.find((s) => s.id === songId)
-          if (song) setPublicSongs((prev) => [{ ...song, isPublic: true }, ...prev.filter((s) => s.id !== songId)])
-          return current
-        })
-      } else {
-        setPublicSongs((prev) => prev.filter((s) => s.id !== songId))
-      }
+      supabase.from('songs').update({ is_public: patch.isPublic }).eq('id', songId).then(({ error }) => {
+        if (error) console.error('updateSong (isPublic):', error)
+      })
     }
-    const dbPatch: Record<string, unknown> = {}
-    if (patch.isPublic !== undefined) dbPatch.is_public = patch.isPublic
-    if (patch.isKnown !== undefined) dbPatch.is_known = patch.isKnown
-    supabase.from('songs').update(dbPatch).eq('id', songId).then(({ error }) => {
-      if (error) console.error('updateSong:', error)
-    })
-  }, [])
+    if (patch.isKnown !== undefined) {
+      supabase.from('user_song_library')
+        .update({ is_known: patch.isKnown })
+        .eq('user_id', userId)
+        .eq('song_id', songId)
+        .then(({ error }) => {
+          if (error) console.error('updateSong (isKnown):', error)
+        })
+    }
+  }, [userId])
 
   const updateCard = useCallback((songId: string, card: Card) => {
     const now = Date.now()
@@ -289,11 +309,23 @@ export function useStorage(userId: string) {
   }, [userId])
 
   const deleteSong = useCallback((songId: string) => {
+    const song = songs.find((s) => s.id === songId)
     setSongs((prev) => prev.filter((s) => s.id !== songId))
-    supabase.from('songs').delete().eq('id', songId).then(({ error }) => {
-      if (error) console.error('deleteSong:', error)
-    })
-  }, [])
+    if (song?.ownerId === userId) {
+      // Owner deletes the song entirely; cascade removes library entries and cards
+      supabase.from('songs').delete().eq('id', songId).then(({ error }) => {
+        if (error) console.error('deleteSong:', error)
+      })
+    } else {
+      // Non-owner removes from library and deletes own cards only
+      supabase.from('user_song_library').delete().eq('user_id', userId).eq('song_id', songId).then(({ error }) => {
+        if (error) console.error('deleteSong (library):', error)
+      })
+      supabase.from('cards').delete().eq('user_id', userId).eq('song_id', songId).then(({ error }) => {
+        if (error) console.error('deleteSong (cards):', error)
+      })
+    }
+  }, [songs, userId])
 
   const getSong = useCallback(
     (songId: string) => songs.find((s) => s.id === songId) ?? null,
@@ -313,7 +345,6 @@ export function useStorage(userId: string) {
         nextDue: now + 21 * DAY_MS,
         lastQuality: 5,
       }))
-      // Fire-and-forget DB update
       supabase.from('cards').upsert(
         masteredCards.map((c) => cardToRow(c, songId, userId)),
       ).then(({ error }) => { if (error) console.error('masterSong:', error) })
@@ -419,6 +450,7 @@ export function useStorage(userId: string) {
    * SM-2 progress, or omit id to create a brand-new card.
    * Cards whose ids are no longer present are deleted.
    * The song's raw `lyrics` field is regenerated from the new lines.
+   * The DB trigger syncs card text for all other users in the library.
    */
   const editSongLines = useCallback(async (
     songId: string,
@@ -430,7 +462,6 @@ export function useStorage(userId: string) {
     const existingById = new Map(song.cards.map((c) => [c.id, c]))
     const now = Date.now()
 
-    // Build updated card list, preserving SM-2 state for existing lines
     const updatedCards: Card[] = newLines.map((line, i) => {
       if (line.id && existingById.has(line.id)) {
         const existing = existingById.get(line.id)!
@@ -439,19 +470,14 @@ export function useStorage(userId: string) {
       return makeCard(uid(), i, line.text, now)
     })
 
-    // Cards no longer referenced → delete from DB
     const keptIds = new Set(updatedCards.map((c) => c.id))
     const deletedIds = song.cards.map((c) => c.id).filter((id) => !keptIds.has(id))
-
-    // Reconstruct the lyrics string from the new lines
     const newLyrics = newLines.map((l) => l.text).join('\n')
 
-    // Optimistic local update
     setSongs((prev) => prev.map((s) =>
       s.id === songId ? { ...s, lyrics: newLyrics, cards: updatedCards } : s,
     ))
 
-    // Persist — run in parallel
     await Promise.all([
       supabase.from('songs').update({ lyrics: newLyrics }).eq('id', songId)
         .then(({ error }) => { if (error) console.error('editSongLines lyrics:', error) }),
@@ -464,13 +490,10 @@ export function useStorage(userId: string) {
     ])
   }, [songs, userId])
 
-  const clonedSourceIds = new Set(songs.map((s) => s.sourceSongId).filter((id): id is string => !!id))
-
   return {
-    songs, publicSongs, userLists, listSongIds, loading,
-    addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
+    songs, userLists, listSongIds, loading,
+    addSong, addSongToLibrary, updateSong, updateCard, deleteSong, getSong, masterSong,
     editSongLines,
-    clonedSourceIds,
     createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   }
 }
