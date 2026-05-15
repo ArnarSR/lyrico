@@ -164,7 +164,7 @@ export function useStorage(userId: string) {
         if (cardsRes.error) console.error('useStorage: cards query error:', cardsRes.error)
         if (listsRes.error) console.error('useStorage: user_lists query error:', listsRes.error)
 
-        const libRows = (libRes.data ?? []) as LibraryRow[]
+        const libRows = (libRes.data ?? []) as unknown as LibraryRow[]
         const cardRows = (cardsRes.data ?? []) as CardRow[]
 
         setSongs(
