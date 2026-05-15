@@ -276,6 +276,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       <>
       <SongStats
         song={song}
+        userId={userId}
         allPracticeLists={allPracticeLists}
         userLists={userLists}
         listSongIds={listSongIds}

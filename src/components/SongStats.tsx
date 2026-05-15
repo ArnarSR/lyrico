@@ -8,6 +8,7 @@ import { Header, IconButton, Shell } from './Shell'
 
 interface SongStatsProps {
   song: Song
+  userId: string
   allPracticeLists: PracticeList[]
   userLists: UserList[]
   listSongIds: Map<string, Set<string>>
@@ -30,10 +31,11 @@ interface SongStatsProps {
 const DAY_MS = 86_400_000
 
 export function SongStats({
-  song, allPracticeLists, userLists, listSongIds,
+  song, userId, allPracticeLists, userLists, listSongIds,
   onBack, onStudy, onStudyVerse, onStanzaDrill, onTest, onWordBank, onDelete, onEditLyrics,
   onTogglePublic, onToggleKnown, onAddToPracticeList, onAddToUserList, onRemoveFromUserList, onCreateUserList,
 }: SongStatsProps) {
+  const isOwner = song.ownerId === userId
   const now = useNow()
   const mastery = masteryPercent(song)
   const [newListName, setNewListName] = useState('')
@@ -264,23 +266,26 @@ export function SongStats({
       </section>
 
       <div className="mt-8 flex flex-col items-center gap-3">
-        <button
-          type="button"
-          onClick={onEditLyrics}
-          className="text-sm text-text-dim hover:text-text"
-        >
-          ✏ Edit lyrics
-        </button>
+        {isOwner && (
+          <button
+            type="button"
+            onClick={onEditLyrics}
+            className="text-sm text-text-dim hover:text-text"
+          >
+            ✏ Edit lyrics
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
-            if (confirm(`Delete "${song.title}"? This cannot be undone.`)) {
-              onDelete()
-            }
+            const msg = isOwner
+              ? `Delete "${song.title}"? This cannot be undone.`
+              : `Remove "${song.title}" from your library?`
+            if (confirm(msg)) onDelete()
           }}
           className="text-sm text-wrong/80 hover:text-wrong"
         >
-          Delete song
+          {isOwner ? 'Delete song' : 'Remove from library'}
         </button>
       </div>
     </Shell>

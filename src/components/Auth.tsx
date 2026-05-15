@@ -23,11 +23,12 @@ export function Auth() {
       // Create profile with display name
       if (data.user) {
         const name = displayName.trim() || email.split('@')[0]
-        await supabase.from('profiles').upsert({
+        const { error: profileError } = await supabase.from('profiles').upsert({
           user_id: data.user.id,
           display_name: name,
           created_at: Date.now(),
         })
+        if (profileError) console.error('Profile creation failed:', profileError)
       }
       setMessage('Account created! You can now sign in.')
       setMode('signin')
