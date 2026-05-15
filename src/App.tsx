@@ -7,6 +7,7 @@ import { useProfile } from './hooks/useProfile'
 import { useStudyStats } from './hooks/useStudyStats'
 import { Auth } from './components/Auth'
 import { Profile } from './components/Profile'
+import { CelebrationToast } from './components/CelebrationToast'
 import { Onboarding } from './components/Onboarding'
 import { SongLibrary } from './components/SongLibrary'
 import { AddSong } from './components/AddSong'
@@ -132,7 +133,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
   } = useGroups(userId)
   const { profile, updateProfile } = useProfile(userId)
-  const { streak, todayCount, dailyGoal, markCardReviewed } = useStudyStats()
+  const { streak, todayCount, dailyGoal, markCardReviewed, justReachedGoal, clearJustReachedGoal } = useStudyStats(userId)
   const [view, setViewRaw] = useState<View>({ name: 'library' })
   const setView = useCallback((v: View | ((prev: View) => View)) => {
     setViewRaw((prev) => {
@@ -153,32 +154,47 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
   const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
   const mySongIds = new Set(songs.map((s) => s.id))
 
+  const celebration = justReachedGoal ? (
+    <CelebrationToast
+      icon="🎯"
+      title="Daily goal reached!"
+      subtitle={`${dailyGoal} cards · ${streak}-day streak`}
+      onDismiss={clearJustReachedGoal}
+    />
+  ) : null
+
   if (!onboarded) {
     return (
-      <Onboarding
-        onDone={() => {
-          try { localStorage.setItem(onboardingKey, 'true') }
-          catch (e) { console.error('Could not persist onboarding flag:', e) }
-          setOnboarded(true)
-        }}
-      />
+      <>
+        <Onboarding
+          onDone={() => {
+            try { localStorage.setItem(onboardingKey, 'true') }
+            catch (e) { console.error('Could not persist onboarding flag:', e) }
+            setOnboarded(true)
+          }}
+        />
+        {celebration}
+      </>
     )
   }
 
   if (songsLoading) {
-    return <LoadingScreen onSignOut={onSignOut} />
+    return <><LoadingScreen onSignOut={onSignOut} />{celebration}</>
   }
 
   if (view.name === 'add') {
     return (
-      <AddSong
-        onCancel={() => setView({ name: 'library' })}
-        onSave={(input) => {
-          const song = addSong(input)
-          trackSongAdded(song.id, song.cards.length, !!input.audioUrl, !!input.isPublic)
-          setView({ name: 'stats', songId: song.id })
-        }}
-      />
+      <>
+        <AddSong
+          onCancel={() => setView({ name: 'library' })}
+          onSave={(input) => {
+            const song = addSong(input)
+            trackSongAdded(song.id, song.cards.length, !!input.audioUrl, !!input.isPublic)
+            setView({ name: 'stats', songId: song.id })
+          }}
+        />
+        {celebration}
+      </>
     )
   }
 
@@ -186,11 +202,14 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     const song = getSong(view.songId)
     if (!song) return null
     return (
-      <TestSession
-        song={song}
-        onExit={() => setView({ name: 'stats', songId: view.songId })}
-        onMasterSong={() => masterSong(view.songId)}
-      />
+      <>
+        <TestSession
+          song={song}
+          onExit={() => setView({ name: 'stats', songId: view.songId })}
+          onMasterSong={() => masterSong(view.songId)}
+        />
+        {celebration}
+      </>
     )
   }
 
@@ -198,11 +217,14 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     const song = getSong(view.songId)
     if (!song) return null
     return (
-      <WordBankSession
-        song={song}
-        onExit={() => setView({ name: 'stats', songId: view.songId })}
-        onCardReviewed={(card) => { updateCard(song.id, card); markCardReviewed() }}
-      />
+      <>
+        <WordBankSession
+          song={song}
+          onExit={() => setView({ name: 'stats', songId: view.songId })}
+          onCardReviewed={(card) => { updateCard(song.id, card); markCardReviewed() }}
+        />
+        {celebration}
+      </>
     )
   }
 
@@ -210,10 +232,13 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     const song = getSong(view.songId)
     if (!song) return null
     return (
-      <StanzaSession
-        song={song}
-        onExit={() => setView({ name: 'stats', songId: view.songId })}
-      />
+      <>
+        <StanzaSession
+          song={song}
+          onExit={() => setView({ name: 'stats', songId: view.songId })}
+        />
+        {celebration}
+      </>
     )
   }
 
@@ -228,12 +253,15 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
           })()
         : undefined
     return (
-      <StudySession
-        song={song}
-        activeCards={activeCards}
-        onExit={() => setView(view.returnTo ?? { name: 'stats', songId: view.songId })}
-        onCardReviewed={(card) => { updateCard(song.id, card); markCardReviewed() }}
-      />
+      <>
+        <StudySession
+          song={song}
+          activeCards={activeCards}
+          onExit={() => setView(view.returnTo ?? { name: 'stats', songId: view.songId })}
+          onCardReviewed={(card) => { updateCard(song.id, card); markCardReviewed() }}
+        />
+        {celebration}
+      </>
     )
   }
 
@@ -241,6 +269,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     const song = getSong(view.songId)
     if (!song) return null
     return (
+      <>
       <SongStats
         song={song}
         allPracticeLists={allPracticeLists}
@@ -265,6 +294,8 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onRemoveFromUserList={(listId) => removeSongFromUserList(listId, song.id)}
         onCreateUserList={(name) => createUserList(name, 'standard')}
       />
+      {celebration}
+      </>
     )
   }
 
@@ -272,6 +303,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     const song = getSong(view.songId)
     if (!song) return null
     return (
+      <>
       <EditLyrics
         song={song}
         onSave={async (lines) => {
@@ -281,11 +313,14 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         }}
         onCancel={() => setView({ name: 'stats', songId: view.songId })}
       />
+      {celebration}
+      </>
     )
   }
 
   if (view.name === 'group') {
     return (
+      <>
       <GroupDetail
         group={view.group}
         userId={userId}
@@ -308,11 +343,14 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
           }
         }}
       />
+      {celebration}
+      </>
     )
   }
 
   if (view.name === 'profile') {
     return (
+      <>
       <Profile
         profile={profile}
         email={userEmail}
@@ -320,11 +358,14 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onUpdate={updateProfile}
         onSignOut={onSignOut}
       />
+      {celebration}
+      </>
     )
   }
 
   if (view.name === 'practice-list') {
     return (
+      <>
       <PracticeListDetail
         list={view.list}
         userId={userId}
@@ -345,10 +386,13 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
           setView({ name: 'study', songId, returnTo: view })
         }}
       />
+      {celebration}
+      </>
     )
   }
 
   return (
+    <>
     <SongLibrary
       songs={songs}
       groups={myGroups}
@@ -378,5 +422,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       onAddSongToUserList={addSongToUserList}
       onRemoveSongFromUserList={removeSongFromUserList}
     />
+    {celebration}
+    </>
   )
 }

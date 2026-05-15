@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Group, GroupMember, PracticeList, UserList, UserListType } from '../types'
 import { Header, Shell } from './Shell'
 import { CreateListForm } from './CreateListForm'
+import { GroupScoreboard } from './GroupScoreboard'
 import { formatDateInput, parseDateInput } from '../lib/dates'
 
 interface GroupDetailProps {
@@ -270,6 +271,12 @@ export function GroupDetail({
             )}
           </div>
         )}
+      </section>
+
+      {/* This week's scoreboard */}
+      <section className="mb-6">
+        <h2 className="mb-3 text-sm uppercase tracking-[0.15em] text-text-dim">🏆 This week</h2>
+        <GroupScoreboard groupId={group.id} currentUserId={userId} />
       </section>
 
       {/* Members */}
