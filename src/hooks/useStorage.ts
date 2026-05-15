@@ -15,6 +15,7 @@ export interface NewSongInput {
   audioName?: string
   concertDate?: number
   isPublic?: boolean
+  sourceSongId?: string
 }
 
 // ── DB row shapes ─────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ interface SongRow {
   created_at: number
   is_public: boolean
   is_known: boolean
+  source_song_id?: string | null
 }
 
 interface CardRow {
@@ -127,6 +129,7 @@ function buildSong(songRow: SongRow, cardRows: CardRow[]): Song {
     isKnown: songRow.is_known,
     ownerId: songRow.user_id,
     lastStudied,
+    sourceSongId: songRow.source_song_id ?? undefined,
   }
 }
 
@@ -216,6 +219,7 @@ export function useStorage(userId: string) {
       created_at: now,
       is_public: input.isPublic ?? false,
       is_known: false,
+      source_song_id: input.sourceSongId ?? null,
     }
     const cardRows = cards.map((c) => cardToRow(c, songId, userId))
 
@@ -241,6 +245,7 @@ export function useStorage(userId: string) {
       lyrics: source.lyrics,
       concertDate: source.concertDate,
       isPublic: false,
+      sourceSongId: source.id,
     })
   }, [addSong])
 
@@ -459,10 +464,13 @@ export function useStorage(userId: string) {
     ])
   }, [songs, userId])
 
+  const clonedSourceIds = new Set(songs.map((s) => s.sourceSongId).filter((id): id is string => !!id))
+
   return {
     songs, publicSongs, userLists, listSongIds, loading,
     addSong, cloneSong, updateSong, updateCard, deleteSong, getSong, masterSong,
     editSongLines,
+    clonedSourceIds,
     createUserList, updateUserList, deleteUserList, addSongToUserList, removeSongFromUserList,
   }
 }

@@ -54,6 +54,7 @@ export interface Song {
   isPublic?: boolean
   isKnown?: boolean
   ownerId?: string // user_id of the song owner (set on community/practice list songs)
+  sourceSongId?: string // set when this is a clone of another song
 }
 
 export interface Profile {
