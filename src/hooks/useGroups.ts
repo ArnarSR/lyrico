@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Group, GroupMember, LyricReport, PracticeList, Song, UserListType } from '../types'
+import type { Group, GroupMember, LyricReport, PendingApproval, PracticeList, Song, SongInList, UserListType } from '../types'
 import { uid } from '../lib/id'
 import { supabase } from '../lib/supabase'
 import { fetchProfiles } from './useProfile'
@@ -28,6 +28,9 @@ interface SongRow {
   audio_name: string | null; concert_date: number | null; created_at: number
   is_public: boolean
 }
+interface PracticeListSongRow {
+  practice_list_id: string; song_id: string; added_by: string; added_at: number; status: string
+}
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
@@ -35,7 +38,10 @@ function rowToGroup(r: GroupRow): Group {
   return { id: r.id, name: r.name, description: r.description ?? undefined, createdBy: r.created_by, inviteCode: r.invite_code, createdAt: r.created_at }
 }
 function rowToMember(r: MemberRow, names: Map<string, string>): GroupMember {
-  return { groupId: r.group_id, userId: r.user_id, role: r.role as 'admin' | 'member', joinedAt: r.joined_at, displayName: names.get(r.user_id) ?? r.user_id.slice(0, 8) }
+  return { groupId: r.group_id, userId: r.user_id, role: r.role as GroupMember['role'], joinedAt: r.joined_at, displayName: names.get(r.user_id) ?? r.user_id.slice(0, 8) }
+}
+function rowToSongInList(songRow: SongRow, plsRow: PracticeListSongRow): SongInList {
+  return { ...rowToSong(songRow), status: plsRow.status as SongInList['status'], addedBy: plsRow.added_by }
 }
 function rowToList(r: ListRow): PracticeList {
   return { id: r.id, groupId: r.group_id, name: r.name, createdBy: r.created_by, createdAt: r.created_at, listType: (r.list_type as UserListType) ?? 'concert', concertDate: r.concert_date ?? undefined }
@@ -58,6 +64,8 @@ export function useGroups(userId: string) {
   const [myGroups, setMyGroups] = useState<Group[]>([])
   const [allPracticeLists, setAllPracticeLists] = useState<PracticeList[]>([])
   const [adminGroupIds, setAdminGroupIds] = useState<Set<string>>(new Set())
+  const [approverGroupIds, setApproverGroupIds] = useState<Set<string>>(new Set())
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -70,12 +78,12 @@ export function useGroups(userId: string) {
       if (!memberships?.length) { setMyGroups([]); setAllPracticeLists([]); setLoading(false); return }
 
       const groupIds = memberships.map((m: { group_id: string }) => m.group_id)
+      const membershipArr = memberships as Array<{ group_id: string; role: string }>
+      const adminSet = new Set(membershipArr.filter((m) => m.role === 'admin').map((m) => m.group_id))
+      const approverSet = new Set(membershipArr.filter((m) => m.role === 'approver').map((m) => m.group_id))
       if (!cancelled) {
-        setAdminGroupIds(new Set(
-          (memberships as Array<{ group_id: string; role: string }>)
-            .filter((m) => m.role === 'admin')
-            .map((m) => m.group_id)
-        ))
+        setAdminGroupIds(adminSet)
+        setApproverGroupIds(approverSet)
       }
 
       const [groupsRes, listsRes] = await Promise.all([
@@ -90,9 +98,40 @@ export function useGroups(userId: string) {
       if (groupsRes.error) console.error('useGroups: groups query error:', groupsRes.error)
       if (listsRes.error) console.error('useGroups: practice_lists query error:', listsRes.error)
 
+      const groups = (groupsRes.data ?? []).map((r) => rowToGroup(r as GroupRow))
+      const lists = (listsRes.data ?? []).map((r) => rowToList(r as ListRow))
+
+      // Load pending approvals for groups where user is admin or approver
+      const manageableGroupIds = membershipArr
+        .filter((m) => m.role === 'admin' || m.role === 'approver')
+        .map((m) => m.group_id)
+      if (manageableGroupIds.length > 0) {
+        const manageableListIds = lists.filter((l) => manageableGroupIds.includes(l.groupId)).map((l) => l.id)
+        if (manageableListIds.length > 0) {
+          const { data: pendingRows } = await supabase
+            .from('practice_list_songs')
+            .select('practice_list_id')
+            .in('practice_list_id', manageableListIds)
+            .eq('status', 'pending')
+          const countByList = new Map<string, number>()
+          for (const row of (pendingRows ?? []) as Array<{ practice_list_id: string }>) {
+            countByList.set(row.practice_list_id, (countByList.get(row.practice_list_id) ?? 0) + 1)
+          }
+          const groupMap = new Map(groups.map((g) => [g.id, g]))
+          const listMap = new Map(lists.map((l) => [l.id, l]))
+          const approvals: PendingApproval[] = []
+          for (const [listId, count] of countByList) {
+            const list = listMap.get(listId)
+            const group = list ? groupMap.get(list.groupId) : undefined
+            if (list && group) approvals.push({ practiceListId: listId, practiceListName: list.name, groupId: list.groupId, groupName: group.name, count })
+          }
+          if (!cancelled) setPendingApprovals(approvals)
+        }
+      }
+
       if (!cancelled) {
-        setMyGroups((groupsRes.data ?? []).map((r) => rowToGroup(r as GroupRow)))
-        setAllPracticeLists((listsRes.data ?? []).map((r) => rowToList(r as ListRow)))
+        setMyGroups(groups)
+        setAllPracticeLists(lists)
         setLoading(false)
       }
     }
@@ -207,24 +246,34 @@ export function useGroups(userId: string) {
     await supabase.from('practice_lists').delete().eq('id', listId)
   }, [])
 
-  const getPracticeListSongs = useCallback(async (listId: string): Promise<Song[]> => {
+  const getPracticeListSongs = useCallback(async (listId: string): Promise<SongInList[]> => {
     const { data: plSongs } = await supabase
-      .from('practice_list_songs').select('song_id').eq('practice_list_id', listId)
+      .from('practice_list_songs').select('song_id, added_by, status').eq('practice_list_id', listId)
 
     if (!plSongs?.length) return []
+
+    const plsMap = new Map<string, PracticeListSongRow>()
+    for (const row of plSongs as Array<{ song_id: string; added_by: string; status: string }>) {
+      plsMap.set(row.song_id, { practice_list_id: listId, song_id: row.song_id, added_by: row.added_by, added_at: 0, status: row.status })
+    }
 
     const { data: songRows } = await supabase
       .from('songs').select('*').in('id', plSongs.map((s: { song_id: string }) => s.song_id))
 
-    return (songRows ?? []).map((r) => rowToSong(r as SongRow))
+    return (songRows ?? []).map((r) => rowToSongInList(r as SongRow, plsMap.get((r as SongRow).id)!))
   }, [])
 
-  const addSongToPracticeList = useCallback(async (listId: string, songId: string) => {
+  const addSongToPracticeList = useCallback(async (listId: string, songId: string): Promise<{ status: 'approved' | 'pending' }> => {
+    const list = allPracticeLists.find((l) => l.id === listId)
+    const groupId = list?.groupId
+    const canApprove = groupId ? (adminGroupIds.has(groupId) || approverGroupIds.has(groupId)) : false
+    const status: 'approved' | 'pending' = canApprove ? 'approved' : 'pending'
     const { error } = await supabase.from('practice_list_songs').insert({
-      practice_list_id: listId, song_id: songId, added_by: userId, added_at: Date.now(),
+      practice_list_id: listId, song_id: songId, added_by: userId, added_at: Date.now(), status,
     })
-    if (error && error.code !== '23505') throw error // ignore duplicate
-  }, [userId])
+    if (error && error.code !== '23505') throw error
+    return { status }
+  }, [userId, allPracticeLists, adminGroupIds, approverGroupIds])
 
   const removeSongFromPracticeList = useCallback(async (listId: string, songId: string) => {
     await supabase.from('practice_list_songs').delete()
@@ -232,6 +281,42 @@ export function useGroups(userId: string) {
   }, [])
 
   const isGroupAdmin = useCallback((groupId: string) => adminGroupIds.has(groupId), [adminGroupIds])
+  const isGroupApprover = useCallback((groupId: string) => approverGroupIds.has(groupId), [approverGroupIds])
+  const isGroupModerator = useCallback((groupId: string) => adminGroupIds.has(groupId) || approverGroupIds.has(groupId), [adminGroupIds, approverGroupIds])
+
+  const approveSong = useCallback(async (listId: string, songId: string): Promise<void> => {
+    const { error } = await supabase
+      .from('practice_list_songs').update({ status: 'approved' })
+      .eq('practice_list_id', listId).eq('song_id', songId)
+    if (error) throw error
+    setPendingApprovals((prev) => prev
+      .map((pa) => pa.practiceListId !== listId ? pa : pa.count <= 1 ? null : { ...pa, count: pa.count - 1 })
+      .filter((pa): pa is PendingApproval => pa !== null))
+  }, [])
+
+  const rejectSong = useCallback(async (listId: string, songId: string): Promise<void> => {
+    const { error } = await supabase
+      .from('practice_list_songs').delete()
+      .eq('practice_list_id', listId).eq('song_id', songId)
+    if (error) throw error
+    setPendingApprovals((prev) => prev
+      .map((pa) => pa.practiceListId !== listId ? pa : pa.count <= 1 ? null : { ...pa, count: pa.count - 1 })
+      .filter((pa): pa is PendingApproval => pa !== null))
+  }, [])
+
+  const updateMemberRole = useCallback(async (groupId: string, targetUserId: string, newRole: 'approver' | 'member'): Promise<void> => {
+    const { error } = await supabase
+      .from('group_members').update({ role: newRole })
+      .eq('group_id', groupId).eq('user_id', targetUserId)
+    if (error) throw error
+  }, [])
+
+  const removeMember = useCallback(async (groupId: string, targetUserId: string): Promise<void> => {
+    const { error } = await supabase
+      .from('group_members').delete()
+      .eq('group_id', groupId).eq('user_id', targetUserId)
+    if (error) throw error
+  }, [])
 
   const submitLyricReport = useCallback(async (
     songId: string, lineIndex: number, currentText: string, suggestedText: string,
@@ -258,10 +343,13 @@ export function useGroups(userId: string) {
   }, [])
 
   return {
-    myGroups, allPracticeLists, loading,
+    myGroups, allPracticeLists, loading, pendingApprovals,
     createGroup, joinGroup, leaveGroup,
     getGroupDetails, createPracticeList, updatePracticeList, deletePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
-    isGroupAdmin, submitLyricReport, getLyricReports, dismissLyricReport,
+    approveSong, rejectSong,
+    isGroupAdmin, isGroupApprover, isGroupModerator,
+    updateMemberRole, removeMember,
+    submitLyricReport, getLyricReports, dismissLyricReport,
   }
 }

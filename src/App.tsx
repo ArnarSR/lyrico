@@ -131,7 +131,11 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     createGroup, joinGroup, leaveGroup,
     getGroupDetails, createPracticeList, updatePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
-    isGroupAdmin, submitLyricReport, getLyricReports, dismissLyricReport,
+    approveSong, rejectSong,
+    isGroupAdmin, isGroupModerator,
+    updateMemberRole, removeMember,
+    pendingApprovals,
+    submitLyricReport, getLyricReports, dismissLyricReport,
   } = useGroups(userId)
   const { profile, updateProfile } = useProfile(userId)
   const { streak, todayCount, dailyGoal, markCardReviewed, justReachedGoal, clearJustReachedGoal } = useStudyStats(userId)
@@ -336,6 +340,8 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onCreatePracticeList={(groupId, name, listType, concertDate) => createPracticeList(groupId, name, listType, concertDate)}
         onUpdatePracticeList={updatePracticeList}
         onLeaveGroup={leaveGroup}
+        onUpdateMemberRole={updateMemberRole}
+        onRemoveMember={removeMember}
         onAddToPractice={async (list) => {
           if (userLists.some((ul) => ul.sourcePracticeListId === list.id)) return
           const plSongs = await getPracticeListSongs(list.id)
@@ -388,7 +394,10 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
           trackPracticeListStudy(view.list.id, songId)
           setView({ name: 'study', songId, returnTo: view })
         }}
-        isAdmin={isGroupAdmin(view.list.groupId)}
+        isAdmin={isGroupModerator(view.list.groupId)}
+        canApproveSongs={isGroupModerator(view.list.groupId)}
+        onApproveSong={(songId) => approveSong(view.list.id, songId)}
+        onRejectSong={(songId) => rejectSong(view.list.id, songId)}
         onGetReports={getLyricReports}
         onDismissReport={dismissLyricReport}
         onEditSongLine={async (songId, lineIndex, newText) => {
@@ -426,6 +435,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       onJoinGroup={joinGroup}
       onTogglePublic={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isPublic: !s.isPublic }) }}
       onToggleKnown={(id) => { const s = songs.find((s) => s.id === id); if (s) updateSong(id, { isKnown: !s.isKnown }) }}
+      pendingApprovals={pendingApprovals}
       onGetPracticeListSongs={getPracticeListSongs}
       onOpenPracticeList={(list) => setView({ name: 'practice-list', list })}
       onCreateUserList={(name, listType, concertDate) => createUserList(name, listType, concertDate)}

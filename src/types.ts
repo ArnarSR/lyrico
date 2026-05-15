@@ -74,9 +74,22 @@ export interface Group {
 export interface GroupMember {
   groupId: string
   userId: string
-  role: 'admin' | 'member'
+  role: 'admin' | 'approver' | 'member'
   joinedAt: number
   displayName: string
+}
+
+export interface SongInList extends Song {
+  status: 'approved' | 'pending'
+  addedBy: string
+}
+
+export interface PendingApproval {
+  practiceListId: string
+  practiceListName: string
+  groupId: string
+  groupName: string
+  count: number
 }
 
 export interface PracticeList {

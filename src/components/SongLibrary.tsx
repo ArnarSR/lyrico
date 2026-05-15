@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Group, PracticeList, Song, UserList, UserListType } from '../types'
+import type { Group, PendingApproval, PracticeList, Song, SongInList, UserList, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
 import { Header, IconButton, Shell } from './Shell'
@@ -18,6 +18,7 @@ interface SongLibraryProps {
   allPracticeLists: PracticeList[]
   userLists: UserList[]
   listSongIds: Map<string, Set<string>>
+  pendingApprovals: PendingApproval[]
   onOpen: (songId: string) => void
   onStudy: (songId: string) => void
   onAdd: () => void
@@ -32,7 +33,7 @@ interface SongLibraryProps {
   onJoinGroup: (inviteCode: string) => Promise<Group | null>
   onTogglePublic: (songId: string) => void
   onToggleKnown: (songId: string) => void
-  onGetPracticeListSongs: (listId: string) => Promise<Song[]>
+  onGetPracticeListSongs: (listId: string) => Promise<SongInList[]>
   onCreateUserList: (name: string, listType?: UserListType, concertDate?: number) => Promise<UserList>
   onUpdateUserList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
   onDeleteUserList: (listId: string) => void
@@ -58,7 +59,7 @@ function formatRelative(now: number, ts?: number): string {
 }
 
 export function SongLibrary({
-  songs, groups, groupsLoading, allPracticeLists, userLists, listSongIds,
+  songs, groups, groupsLoading, allPracticeLists, userLists, listSongIds, pendingApprovals,
   onOpen, onStudy, onAdd, onSignOut, onOpenProfile, profileInitial,
   streak, todayCount, dailyGoal,
   onOpenGroup, onCreateGroup, onJoinGroup, onTogglePublic, onToggleKnown,
@@ -70,6 +71,7 @@ export function SongLibrary({
   const now = useNow()
   const [tab, setTab] = useState<Tab>('practice')
   const [showFeedback, setShowFeedback] = useState(false)
+  const [approvalBannerDismissed, setApprovalBannerDismissed] = useState(false)
 
   return (
     <Shell>
@@ -99,6 +101,41 @@ export function SongLibrary({
           </div>
         }
       />
+
+      {/* Pending approvals notification */}
+      {!approvalBannerDismissed && pendingApprovals.length > 0 && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/5 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-text">
+              {pendingApprovals.reduce((s, pa) => s + pa.count, 0)} song{pendingApprovals.reduce((s, pa) => s + pa.count, 0) !== 1 ? 's' : ''} awaiting approval
+            </p>
+            <p className="mt-0.5 text-xs text-text-dim">
+              {pendingApprovals.map((pa) => `${pa.practiceListName} · ${pa.groupName}`).join(' / ')}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const first = pendingApprovals[0]
+                const list = allPracticeLists.find((l) => l.id === first.practiceListId)
+                if (list) onOpenPracticeList(list)
+              }}
+              className="rounded-full border border-accent bg-accent/15 px-3 py-1.5 text-xs text-accent hover:bg-accent/25"
+            >
+              Review
+            </button>
+            <button
+              type="button"
+              onClick={() => setApprovalBannerDismissed(true)}
+              className="text-text-dim/40 hover:text-text-dim"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {tab === 'practice' && (
         <StudyStatsBanner
@@ -199,7 +236,7 @@ interface PracticeTabProps {
   onOpen: (id: string) => void
   onStudy: (id: string) => void
   onToggleKnown: (id: string) => void
-  onGetPracticeListSongs: (listId: string) => Promise<Song[]>
+  onGetPracticeListSongs: (listId: string) => Promise<SongInList[]>
   onCreateUserList: (name: string, listType?: UserListType, concertDate?: number) => Promise<UserList>
   onUpdateUserList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => void
   onDeleteUserList: (listId: string) => void
@@ -212,7 +249,7 @@ function PracticeTab({
 }: PracticeTabProps) {
   const mySongIds = useMemo(() => new Set(songs.map((s) => s.id)), [songs])
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [fetchedSongs, setFetchedSongs] = useState<Map<string, Song[]>>(new Map())
+  const [fetchedSongs, setFetchedSongs] = useState<Map<string, SongInList[]>>(new Map())
   const [fetchingId, setFetchingId] = useState<string | null>(null)
   const [showNewList, setShowNewList] = useState(false)
 

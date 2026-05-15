@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { LyricReport, PracticeList, Song, UserListType } from '../types'
+import type { LyricReport, PracticeList, Song, SongInList, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { Header, Shell } from './Shell'
 import { formatDateInput, parseDateInput } from '../lib/dates'
@@ -11,12 +11,15 @@ interface PracticeListDetailProps {
   mySongs: Song[]
   onBack: () => void
   onAddSongToLibrary: (song: Song) => void
-  onGetSongs: (listId: string) => Promise<Song[]>
-  onAddSong: (listId: string, songId: string) => Promise<void>
+  onGetSongs: (listId: string) => Promise<SongInList[]>
+  onAddSong: (listId: string, songId: string) => Promise<{ status: 'approved' | 'pending' }>
   onRemoveSong: (listId: string, songId: string) => Promise<void>
   onUpdateList: (patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => Promise<void>
   onStudy: (songId: string) => void
   isAdmin?: boolean
+  canApproveSongs?: boolean
+  onApproveSong?: (songId: string) => Promise<void>
+  onRejectSong?: (songId: string) => Promise<void>
   onGetReports?: (songId: string) => Promise<LyricReport[]>
   onEditSongLine?: (songId: string, lineIndex: number, newText: string) => Promise<void>
   onDismissReport?: (reportId: string) => Promise<void>
@@ -27,9 +30,9 @@ function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 
 export function PracticeListDetail({
   list, userId, mySongIds, mySongs, onBack, onAddSongToLibrary, onGetSongs, onAddSong, onRemoveSong, onUpdateList, onStudy,
-  isAdmin, onGetReports, onEditSongLine, onDismissReport,
+  isAdmin, canApproveSongs, onApproveSong, onRejectSong, onGetReports, onEditSongLine, onDismissReport,
 }: PracticeListDetailProps) {
-  const [songs, setSongs] = useState<Song[]>([])
+  const [songs, setSongs] = useState<SongInList[]>([])
   const [loading, setLoading] = useState(true)
   const [showPicker, setShowPicker] = useState(false)
   const [search, setSearch] = useState('')
@@ -46,12 +49,14 @@ export function PracticeListDetail({
   }, [list.id, onGetSongs])
 
   const isOwner = list.createdBy === userId
+  const approvedSongs = useMemo(() => songs.filter((s) => s.status === 'approved'), [songs])
+  const pendingSongs = useMemo(() => songs.filter((s) => s.status === 'pending'), [songs])
   const listSongIds = new Set(songs.map((s) => s.id))
 
-  // Merge: prefer user's own mastery data over the raw list song data
+  // Merge: prefer user's own mastery data over the raw list song data (approved only for stats)
   const songsWithMastery = useMemo(
-    () => songs.map((s) => mySongs.find((ms) => ms.id === s.id) ?? s),
-    [songs, mySongs],
+    () => approvedSongs.map((s) => mySongs.find((ms) => ms.id === s.id) ?? s),
+    [approvedSongs, mySongs],
   )
 
   const readiness = useMemo(() => {
@@ -78,12 +83,12 @@ export function PracticeListDetail({
 
   async function handleAdd(song: Song) {
     setAdding((prev) => new Set(prev).add(song.id))
-    setSongs((prev) => [...prev, song])
-    await onAddSong(list.id, song.id)
+    const { status } = await onAddSong(list.id, song.id)
+    setSongs((prev) => [...prev, { ...song, status, addedBy: userId }])
     setAdding((prev) => { const s = new Set(prev); s.delete(song.id); return s })
   }
 
-  const songsNotOwned = songs.filter((s) => !mySongIds.has(s.id))
+  const songsNotOwned = approvedSongs.filter((s) => !mySongIds.has(s.id))
 
   async function handleAddAll() {
     if (songsNotOwned.length === 0) return
@@ -95,8 +100,13 @@ export function PracticeListDetail({
   }
 
   async function handleRemove(songId: string) {
+    const song = songs.find((s) => s.id === songId)
     setSongs((prev) => prev.filter((s) => s.id !== songId))
-    await onRemoveSong(list.id, songId)
+    if (canApproveSongs && song?.status === 'pending') {
+      await onRejectSong?.(songId)
+    } else {
+      await onRemoveSong(list.id, songId)
+    }
   }
 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -143,7 +153,7 @@ export function PracticeListDetail({
     <Shell>
       <Header
         title={list.name}
-        subtitle={loading ? undefined : `${songs.length} song${songs.length !== 1 ? 's' : ''}`}
+        subtitle={loading ? undefined : `${approvedSongs.length} song${approvedSongs.length !== 1 ? 's' : ''}${pendingSongs.length > 0 ? ` · ${pendingSongs.length} pending` : ''}`}
         right={
           <button type="button" onClick={onBack} className="text-sm text-text-dim hover:text-text">
             Back
@@ -321,51 +331,86 @@ export function PracticeListDetail({
       ) : (
         <ul className="flex flex-col gap-3">
           {songs.map((song) => {
+            const isPending = song.status === 'pending'
+            const isMyPending = isPending && song.addedBy === userId
             const resolved = mySongs.find((ms) => ms.id === song.id) ?? song
             const m = resolved.isKnown ? 100 : masteryPercent(resolved)
             const barColor = m < 30 ? 'bg-wrong/70' : m < 70 ? 'bg-accent' : 'bg-correct'
             const textColor = m < 30 ? 'text-wrong' : m < 70 ? 'text-accent' : 'text-correct'
             const isStudyTarget = studySong?.id === song.id
             return (
-              <li key={song.id} className={`rounded-2xl border bg-bg-card p-4 ${isStudyTarget ? 'border-accent/40' : 'border-border'}`}>
+              <li key={song.id} className={`rounded-2xl border bg-bg-card p-4 ${isPending ? 'border-accent/20 opacity-80' : isStudyTarget ? 'border-accent/40' : 'border-border'}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex flex-wrap items-baseline gap-2">
                       <p className="truncate text-base text-text">{song.title}</p>
-                      <span className={`shrink-0 text-xs font-medium ${textColor}`}>{m}%</span>
+                      {!isPending && <span className={`shrink-0 text-xs font-medium ${textColor}`}>{m}%</span>}
+                      {isPending && (
+                        <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                          {isMyPending ? 'Awaiting approval' : 'Pending'}
+                        </span>
+                      )}
                     </div>
                     {song.composer && (
                       <p className="mt-0.5 truncate text-sm text-text-dim">{song.composer}</p>
                     )}
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-soft">
-                      <div className={`h-full rounded-full transition-[width] ${barColor}`} style={{ width: `${m}%` }} />
-                    </div>
+                    {!isPending && (
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-soft">
+                        <div className={`h-full rounded-full transition-[width] ${barColor}`} style={{ width: `${m}%` }} />
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    {mySongIds.has(song.id) ? (
-                      <button
-                        type="button"
-                        onClick={() => onStudy(song.id)}
-                        className="rounded-full border border-border px-3 py-1.5 text-xs text-text-dim hover:border-accent/50 hover:text-accent"
-                      >
-                        Study
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onAddSongToLibrary(song)}
-                        className="rounded-full border border-accent bg-accent/15 px-3 py-1.5 text-sm text-accent hover:bg-accent/25"
-                      >
-                        Add to library
-                      </button>
+                    {/* Approve/Reject buttons for moderators on pending songs */}
+                    {canApproveSongs && isPending && (
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await onApproveSong?.(song.id)
+                            setSongs((prev) => prev.map((s) => s.id === song.id ? { ...s, status: 'approved' } : s))
+                          }}
+                          className="rounded-full border border-correct bg-correct/10 px-3 py-1 text-xs text-correct hover:bg-correct/20"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(song.id)}
+                          className="rounded-full border border-wrong/40 bg-wrong/5 px-3 py-1 text-xs text-wrong/80 hover:bg-wrong/15"
+                        >
+                          Reject
+                        </button>
+                      </div>
                     )}
-                    {isOwner && (
+                    {/* Study / Add to library for approved songs */}
+                    {!isPending && (
+                      mySongIds.has(song.id) ? (
+                        <button
+                          type="button"
+                          onClick={() => onStudy(song.id)}
+                          className="rounded-full border border-border px-3 py-1.5 text-xs text-text-dim hover:border-accent/50 hover:text-accent"
+                        >
+                          Study
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onAddSongToLibrary(song)}
+                          className="rounded-full border border-accent bg-accent/15 px-3 py-1.5 text-sm text-accent hover:bg-accent/25"
+                        >
+                          Add to library
+                        </button>
+                      )
+                    )}
+                    {/* Remove: owner removes approved songs; own pending can also be withdrawn */}
+                    {(isOwner || (isMyPending && !canApproveSongs)) && (
                       <button
                         type="button"
                         onClick={() => handleRemove(song.id)}
                         className="text-xs text-text-dim/50 hover:text-wrong"
                       >
-                        Remove
+                        {isMyPending ? 'Withdraw' : 'Remove'}
                       </button>
                     )}
                   </div>

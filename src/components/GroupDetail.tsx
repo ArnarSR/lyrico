@@ -16,6 +16,8 @@ interface GroupDetailProps {
   onUpdatePracticeList: (listId: string, patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => Promise<void>
   onLeaveGroup: (groupId: string) => Promise<void>
   onAddToPractice: (list: PracticeList) => Promise<void>
+  onUpdateMemberRole: (groupId: string, userId: string, newRole: 'approver' | 'member') => Promise<void>
+  onRemoveMember: (groupId: string, userId: string) => Promise<void>
 }
 
 const DAY_MS = 86_400_000
@@ -24,6 +26,7 @@ function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 export function GroupDetail({
   group, userId, userLists, onBack, onOpenPracticeList,
   onGetDetails, onCreatePracticeList, onUpdatePracticeList, onLeaveGroup, onAddToPractice,
+  onUpdateMemberRole, onRemoveMember,
 }: GroupDetailProps) {
   // Map of group practice list id → user's personal list copying it (if any)
   const addedSources = new Set(userLists.map((ul) => ul.sourcePracticeListId).filter((id): id is string => !!id))
@@ -38,6 +41,9 @@ export function GroupDetail({
   const [addedToPractice, setAddedToPractice] = useState<Set<string>>(new Set())
 
   const isAdmin = members.find((m) => m.userId === userId)?.role === 'admin'
+  const [roleChanging, setRoleChanging] = useState<string | null>(null)
+  const [memberRemoving, setMemberRemoving] = useState<string | null>(null)
+  const [memberError, setMemberError] = useState<string | null>(null)
 
   useEffect(() => {
     onGetDetails(group.id).then(({ members: m, practiceLists: pl }) => {
@@ -285,16 +291,66 @@ export function GroupDetail({
         {loading ? (
           <p className="text-sm text-text-dim">Loading…</p>
         ) : (
-          <ul className="flex flex-col gap-1.5">
-            {members.map((m) => (
-              <li key={m.userId} className="flex items-center justify-between rounded-xl border border-border bg-bg-soft px-4 py-2.5">
-                <span className="text-sm text-text">{m.displayName}</span>
-                {m.role === 'admin' && (
-                  <span className="text-xs text-accent">Admin</span>
-                )}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="flex flex-col gap-1.5">
+              {members.map((m) => {
+                const canManage = isAdmin && m.role !== 'admin' && m.userId !== userId
+                return (
+                  <li key={m.userId} className="flex items-center gap-2 rounded-xl border border-border bg-bg-soft px-4 py-2.5">
+                    <span className="flex-1 truncate text-sm text-text">{m.displayName}</span>
+                    {m.role === 'admin' && <span className="shrink-0 text-xs text-accent">Admin</span>}
+                    {m.role === 'approver' && !canManage && <span className="shrink-0 text-xs text-text-dim">Approver</span>}
+                    {canManage && (
+                      <>
+                        <select
+                          disabled={roleChanging === m.userId}
+                          value={m.role}
+                          onChange={async (e) => {
+                            const newRole = e.target.value as 'approver' | 'member'
+                            setRoleChanging(m.userId)
+                            setMemberError(null)
+                            try {
+                              await onUpdateMemberRole(group.id, m.userId, newRole)
+                              setMembers((prev) => prev.map((mem) => mem.userId === m.userId ? { ...mem, role: newRole } : mem))
+                            } catch (err) {
+                              setMemberError(err instanceof Error ? err.message : 'Could not update role')
+                            } finally {
+                              setRoleChanging(null)
+                            }
+                          }}
+                          className="rounded-lg border border-border bg-bg px-2 py-0.5 text-xs text-text-dim focus:border-accent disabled:opacity-50"
+                        >
+                          <option value="member">Member</option>
+                          <option value="approver">Approver</option>
+                        </select>
+                        <button
+                          type="button"
+                          disabled={memberRemoving === m.userId}
+                          onClick={async () => {
+                            if (!confirm(`Remove ${m.displayName} from the group?`)) return
+                            setMemberRemoving(m.userId)
+                            setMemberError(null)
+                            try {
+                              await onRemoveMember(group.id, m.userId)
+                              setMembers((prev) => prev.filter((mem) => mem.userId !== m.userId))
+                            } catch (err) {
+                              setMemberError(err instanceof Error ? err.message : 'Could not remove member')
+                            } finally {
+                              setMemberRemoving(null)
+                            }
+                          }}
+                          className="shrink-0 text-xs text-text-dim/50 hover:text-wrong disabled:opacity-50"
+                        >
+                          {memberRemoving === m.userId ? '…' : 'Remove'}
+                        </button>
+                      </>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+            {memberError && <p className="mt-2 text-xs text-wrong">{memberError}</p>}
+          </>
         )}
       </section>
 
