@@ -341,6 +341,15 @@ export function StudySession({
       <section className="mt-8 rounded-2xl border border-border bg-bg-soft p-5">
         <p className="text-xs uppercase tracking-[0.15em] text-text-dim">Prompt</p>
 
+        {(() => {
+          const prevCard = song.cards.find((c) => c.lineIndex === current.lineIndex - 1)
+          return prevCard ? (
+            <p className="mt-2 whitespace-pre-wrap text-base leading-relaxed text-text-dim/60 italic">
+              {prevCard.text}
+            </p>
+          ) : null
+        })()}
+
         {isInline ? (
           <p className="mt-2 text-xl leading-[2.2] text-text">
             {segments.map((seg, i) => {
@@ -380,25 +389,15 @@ export function StudySession({
               )
             })}
           </p>
-        ) : (() => {
-          const prevCard = song.cards.find((c) => c.lineIndex === current.lineIndex - 1)
-          return (
-            <>
-              {prevCard ? (
-                <p className="mt-2 whitespace-pre-wrap text-xl leading-relaxed text-text-dim italic">
-                  {prevCard.text}
-                </p>
-              ) : (
-                <p className="mt-2 text-xl leading-relaxed text-text-dim italic">(first line)</p>
-              )}
-              {hintWords.length > 0 && (
-                <p className="mt-2 border-t border-border/50 pt-2 text-base text-accent-soft/80 italic">
-                  {hintWords.join(' ')}{hintCount < fullRecallWords.length ? ' …' : ''}
-                </p>
-              )}
-            </>
-          )
-        })()}
+        ) : (
+          <>
+            {hintWords.length > 0 && (
+              <p className="mt-2 border-t border-border/50 pt-2 text-base text-accent-soft/80 italic">
+                {hintWords.join(' ')}{hintCount < fullRecallWords.length ? ' …' : ''}
+              </p>
+            )}
+          </>
+        )}
       </section>
 
       {!isInline && (
