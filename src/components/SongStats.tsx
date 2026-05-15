@@ -16,6 +16,7 @@ interface SongStatsProps {
   onStudyVerse: (stanzaIdx: number) => void
   onStanzaDrill: () => void
   onTest: () => void
+  onWordBank: () => void
   onDelete: () => void
   onEditLyrics: () => void
   onTogglePublic: () => void
@@ -30,7 +31,7 @@ const DAY_MS = 86_400_000
 
 export function SongStats({
   song, allPracticeLists, userLists, listSongIds,
-  onBack, onStudy, onStudyVerse, onStanzaDrill, onTest, onDelete, onEditLyrics,
+  onBack, onStudy, onStudyVerse, onStanzaDrill, onTest, onWordBank, onDelete, onEditLyrics,
   onTogglePublic, onToggleKnown, onAddToPracticeList, onAddToUserList, onRemoveFromUserList, onCreateUserList,
 }: SongStatsProps) {
   const now = useNow()
@@ -129,6 +130,7 @@ export function SongStats({
         onStudy={onStudy}
         onStanzaDrill={onStanzaDrill}
         onTest={onTest}
+        onWordBank={onWordBank}
       />
 
       {/* Verses */}
@@ -478,6 +480,12 @@ type ConfidenceKey = 1 | 2 | 3 | 4
 
 const EXERCISES = [
   {
+    id: 'wordbank' as const,
+    icon: '🧩',
+    title: 'Word bank',
+    desc: 'Tap word tiles into the right slots. The easiest way to start.',
+  },
+  {
     id: 'study' as const,
     icon: '📖',
     title: 'Study',
@@ -497,15 +505,16 @@ const EXERCISES = [
   },
 ] as const
 
-function getRecommendation(mastery: number, confidence: ConfidenceKey | null): 'study' | 'stanza' | 'test' {
+function getRecommendation(mastery: number, confidence: ConfidenceKey | null): 'wordbank' | 'study' | 'stanza' | 'test' {
   // Confidence takes priority when set
   if (confidence !== null) {
-    if (confidence <= 1) return 'study'
+    if (confidence === 1) return 'wordbank'        // 😰 lowest — easiest exercise
     if (confidence === 2) return mastery >= 50 ? 'stanza' : 'study'
     if (confidence === 3) return mastery >= 70 ? 'test' : 'stanza'
     return 'test' // confidence 4
   }
   // Fall back to mastery-based
+  if (mastery < 20) return 'wordbank'
   if (mastery < 40) return 'study'
   if (mastery < 75) return 'stanza'
   return 'test'
@@ -513,13 +522,14 @@ function getRecommendation(mastery: number, confidence: ConfidenceKey | null): '
 
 function confidenceKey(songId: string) { return `lyrico_confidence_${songId}` }
 
-function ExercisePicker({ songId, mastery, cardCount, onStudy, onStanzaDrill, onTest }: {
+function ExercisePicker({ songId, mastery, cardCount, onStudy, onStanzaDrill, onTest, onWordBank }: {
   songId: string
   mastery: number
   cardCount: number
   onStudy: () => void
   onStanzaDrill: () => void
   onTest: () => void
+  onWordBank: () => void
 }) {
   const [confidence, setConfidence] = useState<ConfidenceKey | null>(() => {
     const v = localStorage.getItem(confidenceKey(songId))
@@ -533,7 +543,7 @@ function ExercisePicker({ songId, mastery, cardCount, onStudy, onStanzaDrill, on
   }
 
   const recommended = getRecommendation(mastery, confidence)
-  const handlers: Record<string, () => void> = { study: onStudy, stanza: onStanzaDrill, test: onTest }
+  const handlers: Record<string, () => void> = { study: onStudy, stanza: onStanzaDrill, test: onTest, wordbank: onWordBank }
 
   if (cardCount === 0) return null
 

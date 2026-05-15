@@ -13,6 +13,7 @@ import { AddSong } from './components/AddSong'
 import { StudySession } from './components/StudySession'
 import { StanzaSession } from './components/StanzaSession'
 import { TestSession } from './components/TestSession'
+import { WordBankSession } from './components/WordBankSession'
 import { SongStats } from './components/SongStats'
 import { GroupDetail } from './components/GroupDetail'
 import { PracticeListDetail } from './components/PracticeListDetail'
@@ -28,6 +29,7 @@ type View =
   | { name: 'study'; songId: string; stanzaIdx?: number; returnTo?: View }
   | { name: 'stanza'; songId: string }
   | { name: 'test'; songId: string }
+  | { name: 'wordbank'; songId: string }
   | { name: 'edit-lyrics'; songId: string }
   | { name: 'group'; group: Group }
   | { name: 'practice-list'; list: PracticeList }
@@ -192,6 +194,18 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     )
   }
 
+  if (view.name === 'wordbank') {
+    const song = getSong(view.songId)
+    if (!song) return null
+    return (
+      <WordBankSession
+        song={song}
+        onExit={() => setView({ name: 'stats', songId: view.songId })}
+        onCardReviewed={(card) => { updateCard(song.id, card); markCardReviewed() }}
+      />
+    )
+  }
+
   if (view.name === 'stanza') {
     const song = getSong(view.songId)
     if (!song) return null
@@ -237,6 +251,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onStudyVerse={(stanzaIdx) => setView({ name: 'study', songId: song.id, stanzaIdx })}
         onStanzaDrill={() => setView({ name: 'stanza', songId: song.id })}
         onTest={() => setView({ name: 'test', songId: song.id })}
+        onWordBank={() => setView({ name: 'wordbank', songId: song.id })}
         onEditLyrics={() => setView({ name: 'edit-lyrics', songId: song.id })}
         onDelete={() => {
           deleteSong(song.id)
