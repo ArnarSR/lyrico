@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { PracticeList, Song, UserListType } from '../types'
+import type { LyricReport, PracticeList, Song, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { Header, Shell } from './Shell'
 import { formatDateInput, parseDateInput } from '../lib/dates'
@@ -16,6 +16,10 @@ interface PracticeListDetailProps {
   onRemoveSong: (listId: string, songId: string) => Promise<void>
   onUpdateList: (patch: { name?: string; listType?: UserListType; concertDate?: number | null }) => Promise<void>
   onStudy: (songId: string) => void
+  isAdmin?: boolean
+  onGetReports?: (songId: string) => Promise<LyricReport[]>
+  onEditSongLine?: (songId: string, lineIndex: number, newText: string) => Promise<void>
+  onDismissReport?: (reportId: string) => Promise<void>
 }
 
 const DAY_MS = 86_400_000
@@ -23,6 +27,7 @@ function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 
 export function PracticeListDetail({
   list, userId, mySongIds, mySongs, onBack, onAddSongToLibrary, onGetSongs, onAddSong, onRemoveSong, onUpdateList, onStudy,
+  isAdmin, onGetReports, onEditSongLine, onDismissReport,
 }: PracticeListDetailProps) {
   const [songs, setSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,6 +101,19 @@ export function PracticeListDetail({
 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Admin: pending lyric reports for all songs in this list
+  const [reports, setReports] = useState<LyricReport[]>([])
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isAdmin || !onGetReports) return
+    // Load reports for all songs in the list once songs are loaded
+    if (songs.length === 0) return
+    Promise.all(songs.map((s) => onGetReports(s.id))).then((results) => {
+      setReports(results.flat())
+    })
+  }, [isAdmin, onGetReports, songs])
 
   async function handleSaveDate() {
     const d = dateValue ? parseDateInput(dateValue) : null
@@ -356,6 +374,58 @@ export function PracticeListDetail({
             )
           })}
         </ul>
+      )}
+
+      {/* ── Admin: pending lyric reports ── */}
+      {isAdmin && reports.length > 0 && (
+        <div className="mt-6">
+          <p className="mb-3 text-xs uppercase tracking-[0.15em] text-text-dim">
+            Suggested corrections ({reports.length})
+          </p>
+          <ul className="flex flex-col gap-3">
+            {reports.map((report) => {
+              const song = songs.find((s) => s.id === report.songId)
+              const canApply = !!(onEditSongLine && mySongIds.has(report.songId))
+              return (
+                <li key={report.id} className="rounded-2xl border border-accent/20 bg-bg-soft p-4">
+                  {song && <p className="mb-1 text-xs font-medium text-accent">{song.title}</p>}
+                  <p className="text-sm text-text-dim line-through">{report.currentText}</p>
+                  {report.suggestedText && (
+                    <p className="mt-1 text-sm text-text">{report.suggestedText}</p>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    {canApply && report.suggestedText && (
+                      <button
+                        type="button"
+                        disabled={approvingId === report.id}
+                        onClick={async () => {
+                          setApprovingId(report.id)
+                          await onEditSongLine!(report.songId, report.lineIndex, report.suggestedText!)
+                          await onDismissReport?.(report.id)
+                          setReports((prev) => prev.filter((r) => r.id !== report.id))
+                          setApprovingId(null)
+                        }}
+                        className="rounded-full border border-correct bg-correct/10 px-3 py-1 text-xs text-correct hover:bg-correct/20 disabled:opacity-50"
+                      >
+                        {approvingId === report.id ? 'Applying…' : 'Apply correction'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await onDismissReport?.(report.id)
+                        setReports((prev) => prev.filter((r) => r.id !== report.id))
+                      }}
+                      className="rounded-full border border-border px-3 py-1 text-xs text-text-dim hover:text-text"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
     </Shell>
   )

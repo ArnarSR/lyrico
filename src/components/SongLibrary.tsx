@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Group, PracticeList, Song, UserList, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
@@ -210,6 +210,7 @@ function PracticeTab({
   onOpen, onStudy, onToggleKnown, onGetPracticeListSongs,
   onCreateUserList, onUpdateUserList,
 }: PracticeTabProps) {
+  const mySongIds = useMemo(() => new Set(songs.map((s) => s.id)), [songs])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [fetchedSongs, setFetchedSongs] = useState<Map<string, Song[]>>(new Map())
   const [fetchingId, setFetchingId] = useState<string | null>(null)
@@ -322,6 +323,7 @@ function PracticeTab({
             expanded={expandedId === list.id}
             loading={fetchingId === list.id}
             isOwner={false}
+            mySongIds={mySongIds}
             onToggleExpand={() => toggleExpand(list.id)}
             onStudy={onStudy}
             onOpen={onOpen}
@@ -349,6 +351,7 @@ function PracticeTab({
             expanded={expandedId === list.id}
             loading={fetchingId === list.id}
             isOwner={false}
+            mySongIds={mySongIds}
             onToggleExpand={() => toggleExpand(list.id)}
             onStudy={onStudy}
             onOpen={onOpen}
@@ -430,6 +433,7 @@ interface PracticeListCardProps {
   expanded: boolean
   loading: boolean
   isOwner: boolean
+  mySongIds?: Set<string>
   onToggleExpand: () => void
   onStudy: (id: string) => void
   onOpen: (id: string) => void
@@ -438,7 +442,7 @@ interface PracticeListCardProps {
 }
 
 function PracticeListCard({
-  name, subtitle, listType, listSongs, concertDate, now, expanded, loading, isOwner,
+  name, subtitle, listType, listSongs, concertDate, now, expanded, loading, isOwner, mySongIds,
   onToggleExpand, onStudy, onOpen, onToggleKnown, onUpdateList,
 }: PracticeListCardProps) {
   const [editingDate, setEditingDate] = useState(false)
@@ -560,13 +564,15 @@ function PracticeListCard({
                       >
                         Know it
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => onStudy(song.id)}
-                        className="rounded-full border border-accent/30 bg-accent/15 px-2.5 py-1 text-xs text-accent hover:bg-accent/25"
-                      >
-                        Study
-                      </button>
+                      {(!mySongIds || mySongIds.has(song.id)) && (
+                        <button
+                          type="button"
+                          onClick={() => onStudy(song.id)}
+                          className="rounded-full border border-accent/30 bg-accent/15 px-2.5 py-1 text-xs text-accent hover:bg-accent/25"
+                        >
+                          Study
+                        </button>
+                      )}
                     </div>
                   </li>
                 )

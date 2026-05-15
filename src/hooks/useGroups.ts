@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Group, GroupMember, PracticeList, Song, UserListType } from '../types'
+import type { Group, GroupMember, LyricReport, PracticeList, Song, UserListType } from '../types'
 import { uid } from '../lib/id'
 import { supabase } from '../lib/supabase'
 import { fetchProfiles } from './useProfile'
@@ -13,6 +13,10 @@ interface GroupRow {
 }
 interface MemberRow {
   group_id: string; user_id: string; role: string; joined_at: number
+}
+interface ReportRow {
+  id: string; reporter_id: string; song_id: string; line_index: number
+  current_text: string; suggested_text: string | null; status: string; created_at: number
 }
 interface ListRow {
   id: string; group_id: string; name: string; created_by: string; created_at: number
@@ -39,6 +43,9 @@ function rowToList(r: ListRow): PracticeList {
 function rowToSong(r: SongRow): Song {
   return { id: r.id, title: r.title, composer: r.composer ?? undefined, lyrics: r.lyrics, cards: [], createdAt: r.created_at, isPublic: r.is_public, ownerId: r.user_id }
 }
+function rowToReport(r: ReportRow): LyricReport {
+  return { id: r.id, reporterId: r.reporter_id, songId: r.song_id, lineIndex: r.line_index, currentText: r.current_text, suggestedText: r.suggested_text ?? undefined, status: r.status as LyricReport['status'], createdAt: r.created_at }
+}
 
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -50,18 +57,26 @@ function generateInviteCode(): string {
 export function useGroups(userId: string) {
   const [myGroups, setMyGroups] = useState<Group[]>([])
   const [allPracticeLists, setAllPracticeLists] = useState<PracticeList[]>([])
+  const [adminGroupIds, setAdminGroupIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       const { data: memberships, error: memErr } = await supabase
-        .from('group_members').select('group_id').eq('user_id', userId)
+        .from('group_members').select('group_id, role').eq('user_id', userId)
 
       if (memErr) console.error('useGroups: group_members query error:', memErr)
       if (!memberships?.length) { setMyGroups([]); setAllPracticeLists([]); setLoading(false); return }
 
       const groupIds = memberships.map((m: { group_id: string }) => m.group_id)
+      if (!cancelled) {
+        setAdminGroupIds(new Set(
+          (memberships as Array<{ group_id: string; role: string }>)
+            .filter((m) => m.role === 'admin')
+            .map((m) => m.group_id)
+        ))
+      }
 
       const [groupsRes, listsRes] = await Promise.all([
         supabase.from('groups').select('*')
@@ -216,10 +231,37 @@ export function useGroups(userId: string) {
       .eq('practice_list_id', listId).eq('song_id', songId)
   }, [])
 
+  const isGroupAdmin = useCallback((groupId: string) => adminGroupIds.has(groupId), [adminGroupIds])
+
+  const submitLyricReport = useCallback(async (
+    songId: string, lineIndex: number, currentText: string, suggestedText: string,
+  ): Promise<void> => {
+    const { error } = await supabase.from('lyric_reports').insert({
+      id: uid(), reporter_id: userId, song_id: songId, line_index: lineIndex,
+      current_text: currentText, suggested_text: suggestedText || null,
+      status: 'pending', created_at: Date.now(),
+    })
+    if (error) console.error('submitLyricReport:', error)
+  }, [userId])
+
+  const getLyricReports = useCallback(async (songId: string): Promise<LyricReport[]> => {
+    const { data, error } = await supabase
+      .from('lyric_reports').select('*')
+      .eq('song_id', songId).eq('status', 'pending').order('created_at')
+    if (error) console.error('getLyricReports:', error)
+    return ((data ?? []) as ReportRow[]).map(rowToReport)
+  }, [])
+
+  const dismissLyricReport = useCallback(async (reportId: string): Promise<void> => {
+    const { error } = await supabase.from('lyric_reports').update({ status: 'dismissed' }).eq('id', reportId)
+    if (error) console.error('dismissLyricReport:', error)
+  }, [])
+
   return {
     myGroups, allPracticeLists, loading,
     createGroup, joinGroup, leaveGroup,
     getGroupDetails, createPracticeList, updatePracticeList, deletePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
+    isGroupAdmin, submitLyricReport, getLyricReports, dismissLyricReport,
   }
 }

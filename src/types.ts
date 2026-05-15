@@ -91,6 +91,17 @@ export interface PracticeList {
 
 export type UserListType = 'concert' | 'standard'
 
+export interface LyricReport {
+  id: string
+  reporterId: string
+  songId: string
+  lineIndex: number
+  currentText: string
+  suggestedText?: string
+  status: 'pending' | 'approved' | 'dismissed'
+  createdAt: number
+}
+
 export interface UserList {
   id: string
   userId: string

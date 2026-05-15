@@ -131,6 +131,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     createGroup, joinGroup, leaveGroup,
     getGroupDetails, createPracticeList, updatePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
+    isGroupAdmin, submitLyricReport, getLyricReports, dismissLyricReport,
   } = useGroups(userId)
   const { profile, updateProfile } = useProfile(userId)
   const { streak, todayCount, dailyGoal, markCardReviewed, justReachedGoal, clearJustReachedGoal } = useStudyStats(userId)
@@ -259,6 +260,9 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
           activeCards={activeCards}
           onExit={() => setView(view.returnTo ?? { name: 'stats', songId: view.songId })}
           onCardReviewed={(card) => { updateCard(song.id, card); markCardReviewed() }}
+          onReportLine={(songId, lineIndex, currentText, suggestion) =>
+            submitLyricReport(songId, lineIndex, currentText, suggestion)
+          }
         />
         {celebration}
       </>
@@ -382,6 +386,15 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onStudy={(songId) => {
           trackPracticeListStudy(view.list.id, songId)
           setView({ name: 'study', songId, returnTo: view })
+        }}
+        isAdmin={isGroupAdmin(view.list.groupId)}
+        onGetReports={getLyricReports}
+        onDismissReport={dismissLyricReport}
+        onEditSongLine={async (songId, lineIndex, newText) => {
+          const song = getSong(songId)
+          if (!song) return
+          const newLines = song.cards.map((c) => ({ id: c.id, text: c.lineIndex === lineIndex ? newText : c.text }))
+          await editSongLines(songId, newLines)
         }}
       />
       {celebration}

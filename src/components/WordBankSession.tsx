@@ -12,6 +12,7 @@ interface WordBankSessionProps {
 }
 
 const NUM_DISTRACTORS = 3
+const MAX_EXERCISES = 10
 
 function normalize(s: string): string {
   return s.trim().toLowerCase().replace(/[.,;:!?'"…—–-]/g, '')
@@ -26,31 +27,34 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
-/** Word-bank tiles: tap to place into blanks, tap placed tile to return. */
 export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessionProps) {
   const { review } = useSM2()
-  // Practice all real (non-section-label) cards, lowest mastery first
-  const cards = useMemo(
-    () => song.cards.filter((c) => c.text.trim().length > 0)
-      .slice()
-      .sort((a, b) => a.repetitions - b.repetitions),
-    [song.cards],
+
+  // Snapshot all eligible cards at session start, sorted by least-practiced first
+  const [allCards] = useState(() =>
+    [...song.cards.filter((c) => c.text.trim().length > 0)]
+      .sort((a, b) => a.repetitions - b.repetitions)
   )
-  const [index, setIndex] = useState(0)
-  const current = cards[index]
+
+  // Working queue for the current wave: shuffled slice of allCards
+  const [queue, setQueue] = useState<Card[]>(() => shuffle(allCards.slice(0, MAX_EXERCISES)))
+  // Index into allCards for the next wave
+  const [waveStart, setWaveStart] = useState(MAX_EXERCISES)
+  // Cards that have already been retried once — don't re-queue them again
+  const [retried, setRetried] = useState<Set<string>>(new Set())
   const [reviewedCount, setReviewedCount] = useState(0)
   const [sessionStart] = useState(() => Date.now())
   const exitedRef = useRef(false)
 
   useEffect(() => {
-    trackStudyStarted(song.id, cards.length, 'word_bank')
-  }, [song.id, cards.length])
+    trackStudyStarted(song.id, allCards.length, 'word_bank')
+  }, [song.id, allCards.length])
 
   function handleExit() {
     if (!exitedRef.current) {
       exitedRef.current = true
-      if (current) {
-        trackStudyExited(song.id, reviewedCount, cards.length - index)
+      if (queue.length > 0) {
+        trackStudyExited(song.id, reviewedCount, queue.length)
       } else {
         trackStudyCompleted(song.id, reviewedCount, Date.now() - sessionStart)
       }
@@ -58,6 +62,26 @@ export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessio
     onExit()
   }
 
+  const current = queue[0] ?? null
+  const hasMoreWaves = waveStart < allCards.length
+
+  function handleComplete(quality: number) {
+    const card = queue[0]
+    if (!card) return
+    const reviewed = review(card, quality)
+    onCardReviewed(reviewed)
+    setReviewedCount((n) => n + 1)
+
+    if (quality < 3 && !retried.has(card.id)) {
+      // Wrong first time — shuffle to the back of the queue for one retry
+      setRetried((prev) => new Set(prev).add(card.id))
+      setQueue((prev) => shuffle([...prev.slice(1), reviewed]))
+    } else {
+      setQueue((prev) => prev.slice(1))
+    }
+  }
+
+  // Wave complete — show "keep going?" or done screen
   if (!current) {
     return (
       <Shell>
@@ -71,16 +95,43 @@ export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessio
           }
         />
         <div className="mt-12 flex flex-col items-center gap-4 text-center">
-          <span className="text-5xl">🎉</span>
-          <p className="text-lg text-text">All lines done</p>
-          <p className="text-sm text-text-dim">You reviewed {reviewedCount} line{reviewedCount !== 1 ? 's' : ''}.</p>
-          <button
-            type="button"
-            onClick={handleExit}
-            className="mt-2 rounded-full border border-accent bg-accent px-8 py-3 text-bg hover:brightness-110"
-          >
-            Done
-          </button>
+          <span className="text-5xl">{hasMoreWaves ? '✓' : '🎉'}</span>
+          <p className="text-lg text-text">
+            {hasMoreWaves ? 'Wave complete!' : 'All lines done!'}
+          </p>
+          <p className="text-sm text-text-dim">
+            {reviewedCount} line{reviewedCount !== 1 ? 's' : ''} reviewed this wave.
+          </p>
+          {hasMoreWaves ? (
+            <div className="mt-2 flex flex-col gap-2 w-full max-w-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setQueue(shuffle(allCards.slice(waveStart, waveStart + MAX_EXERCISES)))
+                  setWaveStart((n) => n + MAX_EXERCISES)
+                  setRetried(new Set())
+                }}
+                className="rounded-full border border-accent bg-accent px-8 py-3 text-bg hover:brightness-110"
+              >
+                Keep going ({Math.min(MAX_EXERCISES, allCards.length - waveStart)} more)
+              </button>
+              <button
+                type="button"
+                onClick={handleExit}
+                className="rounded-full border border-border px-8 py-2 text-sm text-text-dim hover:text-text"
+              >
+                Stop here
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleExit}
+              className="mt-2 rounded-full border border-accent bg-accent px-8 py-3 text-bg hover:brightness-110"
+            >
+              Done
+            </button>
+          )}
         </div>
       </Shell>
     )
@@ -88,17 +139,12 @@ export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessio
 
   return (
     <Round
-      key={current.id}
+      key={current.id + retried.has(current.id)}
       song={song}
       card={current}
-      onComplete={(quality) => {
-        const reviewed = review(current, quality)
-        onCardReviewed(reviewed)
-        setReviewedCount((n) => n + 1)
-        setIndex((i) => i + 1)
-      }}
+      onComplete={handleComplete}
       onExit={handleExit}
-      progress={{ index, total: cards.length }}
+      progress={{ done: reviewedCount, waveSize: Math.min(MAX_EXERCISES, allCards.length) }}
     />
   )
 }
@@ -108,18 +154,16 @@ export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessio
 interface RoundProps {
   song: Song
   card: Card
-  progress: { index: number; total: number }
+  progress: { done: number; waveSize: number }
   onComplete: (quality: number) => void
   onExit: () => void
 }
 
 function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
-  // Always use a moderate blank density for word-bank mode (~50% of words)
   const segments = useMemo<Segment[]>(() => buildSegments(card.text, 1), [card])
   const blanks = useMemo(() => segments.filter((s): s is { type: 'blank'; answer: string } => s.type === 'blank'), [segments])
   const correctAnswers = blanks.map((b) => b.answer)
 
-  // Build the tile pool: correct answers + distractors from other cards
   const tiles = useMemo(() => {
     const otherWords = song.cards
       .filter((c) => c.id !== card.id)
@@ -134,15 +178,12 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.id])
 
-  // placements[blankIndex] = poolIndex (which tile fills which blank) or null
   const [placements, setPlacements] = useState<(number | null)[]>(() => new Array(blanks.length).fill(null))
   const placedTileSet = useMemo(() => new Set(placements.filter((p): p is number => p !== null)), [placements])
   const [checked, setChecked] = useState<{ correct: boolean[]; quality: number } | null>(null)
 
   function placeTile(poolIndex: number) {
-    if (checked) return
-    if (placedTileSet.has(poolIndex)) return
-    // Find first empty blank
+    if (checked || placedTileSet.has(poolIndex)) return
     setPlacements((prev) => {
       const next = [...prev]
       const empty = next.findIndex((v) => v === null)
@@ -154,11 +195,7 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
 
   function removeTile(blankIndex: number) {
     if (checked) return
-    setPlacements((prev) => {
-      const next = [...prev]
-      next[blankIndex] = null
-      return next
-    })
+    setPlacements((prev) => { const next = [...prev]; next[blankIndex] = null; return next })
   }
 
   const allFilled = placements.every((p) => p !== null)
@@ -174,11 +211,13 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
     setChecked({ correct, quality })
   }
 
+  const progressPct = Math.min(100, Math.round((progress.done / progress.waveSize) * 100))
+
   return (
     <Shell>
       <Header
         title={song.title}
-        subtitle={`Word bank · ${progress.index + 1} of ${progress.total}`}
+        subtitle={`Word bank · ${progress.done + 1} of ${progress.waveSize}`}
         right={
           <button type="button" onClick={onExit} className="text-sm text-text-dim hover:text-text">
             Exit
@@ -186,27 +225,22 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
         }
       />
 
-      {/* Progress bar */}
       <div className="h-1 w-full overflow-hidden rounded-full bg-bg-card">
         <div
           className="h-full rounded-full bg-accent transition-[width] duration-500"
-          style={{ width: `${(progress.index / progress.total) * 100}%` }}
+          style={{ width: `${progressPct}%` }}
         />
       </div>
 
-      {/* Previous line (context) */}
       <PreviousLine song={song} card={card} />
 
-      {/* Line with blanks rendered as tile slots */}
       <section className="mt-6 rounded-2xl border border-border bg-bg-soft p-5">
         <p className="text-xs uppercase tracking-[0.15em] text-text-dim">Fill in</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-3 text-xl leading-relaxed text-text">
           {(() => {
             let blankIdx = -1
             return segments.map((seg, i) => {
-              if (seg.type === 'text') {
-                return <span key={i}>{seg.value}</span>
-              }
+              if (seg.type === 'text') return <span key={i}>{seg.value}</span>
               blankIdx++
               const localBlankIdx = blankIdx
               const placed = placements[localBlankIdx]
@@ -228,7 +262,7 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
                   }`}
                   style={{ minWidth: `${Math.max(seg.answer.length, 3) + 1.5}ch` }}
                 >
-                  {placed !== null ? tiles[placed] : ' '}
+                  {placed !== null ? tiles[placed] : ' '}
                 </button>
               )
             })
@@ -236,7 +270,6 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
         </div>
       </section>
 
-      {/* Word bank pool */}
       {!checked && (
         <section className="mt-5">
           <p className="mb-2 text-xs uppercase tracking-[0.15em] text-text-dim">Word bank</p>
@@ -263,19 +296,15 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
         </section>
       )}
 
-      {/* Feedback after check */}
       {checked && (
         <section className="mt-5 rounded-2xl border border-border bg-bg-soft px-4 py-3">
           <p className="text-xs uppercase tracking-[0.15em] text-text-dim">
-            {checked.correct.every(Boolean) ? '✓ Perfect' : 'Result'}
+            {checked.correct.every(Boolean) ? '✓ Perfect' : 'Correct answer'}
           </p>
-          <p className="mt-2 text-base text-text">
-            <span className="text-text-dim">Correct:</span> {card.text}
-          </p>
+          <p className="mt-2 text-base text-text">{card.text}</p>
         </section>
       )}
 
-      {/* Action */}
       <div className="mt-5 flex gap-3">
         {!checked ? (
           <button
@@ -308,7 +337,5 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
 function PreviousLine({ song, card }: { song: Song; card: Card }) {
   const prev = song.cards.find((c) => c.lineIndex === card.lineIndex - 1)
   if (!prev) return null
-  return (
-    <p className="mt-6 text-base italic text-text-dim/70">{prev.text}</p>
-  )
+  return <p className="mt-6 text-base italic text-text-dim/70">{prev.text}</p>
 }

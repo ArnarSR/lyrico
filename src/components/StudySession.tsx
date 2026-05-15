@@ -13,6 +13,7 @@ interface StudySessionProps {
   activeCards?: Card[] // if set, only these cards are drilled (e.g. a single verse)
   onExit: () => void
   onCardReviewed: (card: Card) => void
+  onReportLine?: (songId: string, lineIndex: number, currentText: string, suggestion: string) => void
 }
 
 const DIFFICULTY_LABEL = ['Fill 25%', 'Fill 50%', 'Full recall'] as const
@@ -22,6 +23,7 @@ export function StudySession({
   activeCards: activeProp,
   onExit,
   onCardReviewed,
+  onReportLine,
 }: StudySessionProps) {
   const { review } = useSM2()
   // activeCards is the working set for this session (all or a single verse).
@@ -107,6 +109,10 @@ export function StudySession({
     wrongWords: string[]
     hintUsed: boolean
   } | null>(null)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportText, setReportText] = useState('')
+  const [reportSent, setReportSent] = useState(false)
+
   const [lastCardId, setLastCardId] = useState(current?.id)
 
   // Reset transient state synchronously when the card changes.
@@ -116,6 +122,9 @@ export function StudySession({
     setBlankValues(new Array(blankCount).fill(''))
     setChecked(null)
     setHintCount(0)
+    setReportOpen(false)
+    setReportText('')
+    setReportSent(false)
   }
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -425,6 +434,53 @@ export function StudySession({
           fullLine={current.text}
           showDiff={!isInline}
         />
+      )}
+
+      {checked && onReportLine && (
+        <div className="mt-3">
+          {reportSent ? (
+            <p className="text-center text-xs text-correct">Thanks for reporting — admins will review it.</p>
+          ) : reportOpen ? (
+            <div className="rounded-xl border border-border bg-bg-soft p-3">
+              <p className="mb-2 text-xs text-text-dim">Suggest a correction (optional):</p>
+              <textarea
+                value={reportText}
+                onChange={(e) => setReportText(e.target.value)}
+                placeholder={current.text}
+                rows={2}
+                className="w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/50 focus:border-accent focus:outline-none"
+              />
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onReportLine(song.id, current.lineIndex, current.text, reportText.trim())
+                    setReportSent(true)
+                    setReportOpen(false)
+                  }}
+                  className="rounded-full border border-accent bg-accent/15 px-4 py-1.5 text-xs text-accent hover:bg-accent/25"
+                >
+                  Send report
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportOpen(false)}
+                  className="rounded-full border border-border px-4 py-1.5 text-xs text-text-dim hover:text-text"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setReportOpen(true)}
+              className="block w-full text-center text-xs text-text-dim/50 hover:text-text-dim"
+            >
+              Something wrong with this line?
+            </button>
+          )}
+        </div>
       )}
 
       <div className="mt-5 flex gap-3">
