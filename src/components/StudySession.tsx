@@ -98,6 +98,7 @@ export function StudySession({
   const blankCount = segments.filter((s) => s.type === 'blank').length
 
   const [blankValues, setBlankValues] = useState<string[]>(() => new Array(blankCount).fill(''))
+  const [hintedBlanks, setHintedBlanks] = useState<Set<number>>(new Set())
   const [attempt, setAttempt] = useState('') // full-recall textarea
   const [hintCount, setHintCount] = useState(0)
   const [checked, setChecked] = useState<{
@@ -120,6 +121,7 @@ export function StudySession({
     setLastCardId(current.id)
     setAttempt('')
     setBlankValues(new Array(blankCount).fill(''))
+    setHintedBlanks(new Set())
     setChecked(null)
     setHintCount(0)
     setReportOpen(false)
@@ -259,13 +261,25 @@ export function StudySession({
   const fullRecallWords = !isInline ? current.text.split(/\s+/).filter(Boolean) : []
   const hintWords = fullRecallWords.slice(0, hintCount)
   const canHint = !isInline && !checked && hintCount < fullRecallWords.length
+  const canInlineHint = isInline && !checked && hintedBlanks.size < blankCount
+
+  function revealNextBlank() {
+    const blankAnswers = segments.filter((s) => s.type === 'blank').map((s) => s.answer)
+    const nextIdx = blankAnswers.findIndex((_, i) => !hintedBlanks.has(i))
+    if (nextIdx === -1) return
+    const next = [...blankValues]
+    next[nextIdx] = blankAnswers[nextIdx]
+    setBlankValues(next)
+    setHintedBlanks((prev) => new Set([...prev, nextIdx]))
+    blankRefs.current[nextIdx + 1]?.focus() ?? blankRefs.current[nextIdx]?.focus()
+  }
 
   function onCheck() {
     if (!current || checked || !canCheck) return
     const result = scoreAnswer(effectiveAttempt, correctAnswer)
     // Using a hint caps the quality at 3 (Passed) — a perfect answer without hints
     // is the only way to score higher.
-    const quality = hintCount > 0 ? Math.min(result.quality, 3) : result.quality
+    const quality = (hintCount > 0 || hintedBlanks.size > 0) ? Math.min(result.quality, 3) : result.quality
 
     // Identify which individual blanks were wrong so the repeat only targets those.
     const wrongWords: string[] = []
@@ -304,6 +318,7 @@ export function StudySession({
     setChecked(null)
     setAttempt('')
     setBlankValues([])
+    setHintedBlanks(new Set())
     setHintCount(0)
   }
 
@@ -356,13 +371,16 @@ export function StudySession({
               if (seg.type === 'text') return <span key={i}>{seg.value}</span>
 
               const idx = blankIdx++
+              const isHinted = hintedBlanks.has(idx)
               const isCorrect = checked && fuzzyWordMatch(normalize(blankValues[idx] ?? ''), normalize(seg.answer))
               const borderColor = !checked
-                ? 'border-accent'
+                ? isHinted ? 'border-text-dim/40' : 'border-accent'
                 : isCorrect
                   ? 'border-correct'
                   : 'border-wrong'
-              const textColor = !checked ? '' : isCorrect ? 'text-correct' : 'text-wrong'
+              const textColor = !checked
+                ? isHinted ? 'text-text-dim/60' : ''
+                : isCorrect ? 'text-correct' : 'text-wrong'
 
               return (
                 <input
@@ -370,6 +388,7 @@ export function StudySession({
                   ref={(el) => { blankRefs.current[idx] = el }}
                   value={blankValues[idx] ?? ''}
                   onChange={(e) => {
+                    if (isHinted) return // hinted blanks are locked
                     const next = Array.from({ length: blankCount }, (_, j) => blankValues[j] ?? '')
                     next[idx] = e.target.value
                     setBlankValues(next)
@@ -382,6 +401,7 @@ export function StudySession({
                       handleKey(e)
                     }
                   }}
+                  readOnly={isHinted}
                   disabled={!!checked}
                   style={{ width: `${Math.max(seg.answer.length, 4) + 1}ch` }}
                   className={`mx-1 inline-block border-b-2 bg-transparent text-center text-xl focus:outline-none disabled:opacity-80 ${borderColor} ${textColor}`}
@@ -399,6 +419,16 @@ export function StudySession({
           </>
         )}
       </section>
+
+      {canInlineHint && (
+        <button
+          type="button"
+          onClick={revealNextBlank}
+          className="mt-1.5 block w-full text-right text-sm text-text-dim/60 hover:text-text-dim"
+        >
+          {hintedBlanks.size === 0 ? 'Hint' : `${hintedBlanks.size} / ${blankCount} revealed`}
+        </button>
+      )}
 
       {!isInline && (
         <section className="mt-4">
