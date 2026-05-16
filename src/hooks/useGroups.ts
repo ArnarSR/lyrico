@@ -247,10 +247,24 @@ export function useGroups(userId: string) {
   }, [])
 
   const getPracticeListSongs = useCallback(async (listId: string): Promise<SongInList[]> => {
-    const { data: plSongs } = await supabase
+    const { data: plSongs, error } = await supabase
       .from('practice_list_songs').select('song_id, added_by, status').eq('practice_list_id', listId)
 
-    if (!plSongs?.length) return []
+    // Fall back to query without status column if migration hasn't been run yet
+    if (error || !plSongs) {
+      const { data: fallback } = await supabase
+        .from('practice_list_songs').select('song_id, added_by').eq('practice_list_id', listId)
+      if (!fallback?.length) return []
+      const { data: songRows } = await supabase
+        .from('songs').select('*').in('id', fallback.map((s: { song_id: string }) => s.song_id))
+      const plsMap = new Map<string, PracticeListSongRow>()
+      for (const row of fallback as Array<{ song_id: string; added_by: string }>) {
+        plsMap.set(row.song_id, { practice_list_id: listId, song_id: row.song_id, added_by: row.added_by, added_at: 0, status: 'approved' })
+      }
+      return (songRows ?? []).map((r) => rowToSongInList(r as SongRow, plsMap.get((r as SongRow).id)!))
+    }
+
+    if (!plSongs.length) return []
 
     const plsMap = new Map<string, PracticeListSongRow>()
     for (const row of plSongs as Array<{ song_id: string; added_by: string; status: string }>) {
