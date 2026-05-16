@@ -132,7 +132,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     getGroupDetails, createPracticeList, updatePracticeList,
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
     approveSong, rejectSong,
-    isGroupAdmin, isGroupModerator,
+    isGroupModerator,
     updateMemberRole, removeMember,
     pendingApprovals,
     submitLyricReport, getLyricReports, dismissLyricReport,
