@@ -26,7 +26,7 @@ import type { Group, PracticeList } from './types'
 type View =
   | { name: 'library' }
   | { name: 'add' }
-  | { name: 'stats'; songId: string }
+  | { name: 'stats'; songId: string; returnTo?: View }
   | { name: 'study'; songId: string; stanzaIdx?: number; returnTo?: View }
   | { name: 'stanza'; songId: string }
   | { name: 'test'; songId: string }
@@ -284,9 +284,9 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         allPracticeLists={allPracticeLists}
         userLists={userLists}
         listSongIds={listSongIds}
-        onBack={() => setView({ name: 'library' })}
-        onStudy={() => setView({ name: 'study', songId: song.id })}
-        onStudyVerse={(stanzaIdx) => setView({ name: 'study', songId: song.id, stanzaIdx })}
+        onBack={() => setView(view.returnTo ?? { name: 'library' })}
+        onStudy={() => setView({ name: 'study', songId: song.id, returnTo: view })}
+        onStudyVerse={(stanzaIdx) => setView({ name: 'study', songId: song.id, stanzaIdx, returnTo: view })}
         onStanzaDrill={() => setView({ name: 'stanza', songId: song.id })}
         onTest={() => setView({ name: 'test', songId: song.id })}
         onWordBank={() => setView({ name: 'wordbank', songId: song.id })}
@@ -393,7 +393,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onUpdateList={(patch) => updatePracticeList(view.list.id, patch)}
         onStudy={(songId) => {
           trackPracticeListStudy(view.list.id, songId)
-          setView({ name: 'study', songId, returnTo: view })
+          setView({ name: 'stats', songId, returnTo: { name: 'practice-list', list: view.list } })
         }}
         isAdmin={isGroupModerator(view.list.groupId)}
         canApproveSongs={isGroupModerator(view.list.groupId)}
@@ -423,7 +423,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       userLists={userLists}
       listSongIds={listSongIds}
       onOpen={(id) => setView({ name: 'stats', songId: id })}
-      onStudy={(id) => setView({ name: 'study', songId: id })}
+      onStudy={(id) => setView({ name: 'stats', songId: id })}
       onAdd={() => setView({ name: 'add' })}
       onSignOut={onSignOut}
       onOpenProfile={() => setView({ name: 'profile' })}
