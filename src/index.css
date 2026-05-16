@@ -2,13 +2,13 @@
 
 @theme {
   --color-bg: #0c0a08;
-  --color-bg-soft: #1c1710;
-  --color-bg-card: #131008;
-  --color-border: #2e2418;
+  --color-bg-soft: #231a0e;
+  --color-bg-card: #19120a;
+  --color-border: #3d2e1c;
   --color-accent: #d4924a;
   --color-accent-soft: #8a6033;
   --color-text: #ede5d5;
-  --color-text-dim: #9e9080;
+  --color-text-dim: #b8a898;
   --color-correct: #78c896;
   --color-wrong: #e87060;
 
