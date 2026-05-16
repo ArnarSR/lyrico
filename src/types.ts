@@ -84,6 +84,16 @@ export interface SongInList extends Song {
   addedBy: string
 }
 
+export interface MemberSongProgress {
+  userId: string
+  songId: string
+  songTitle: string
+  inLibrary: boolean
+  isKnown: boolean
+  masteryPercent: number
+  lastActiveDay: string | null  // 'YYYY-MM-DD' from study_log, null if never practiced
+}
+
 export interface PendingApproval {
   practiceListId: string
   practiceListName: string

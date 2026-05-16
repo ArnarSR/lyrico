@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Group, GroupMember, LyricReport, PendingApproval, PracticeList, Song, SongInList, UserListType } from '../types'
+import type { Group, GroupMember, LyricReport, MemberSongProgress, PendingApproval, PracticeList, Song, SongInList, UserListType } from '../types'
 import { uid } from '../lib/id'
 import { supabase } from '../lib/supabase'
 import { fetchProfiles } from './useProfile'
@@ -311,6 +311,23 @@ export function useGroups(userId: string) {
     if (error) throw error
   }, [])
 
+  const getGroupMemberProgress = useCallback(async (groupId: string): Promise<MemberSongProgress[]> => {
+    const { data, error } = await supabase.rpc('get_group_member_progress', { p_group_id: groupId })
+    if (error) { console.error('getGroupMemberProgress:', error); throw error }
+    return ((data ?? []) as Array<{
+      member_user_id: string; song_id: string; song_title: string
+      in_library: boolean; is_known: boolean; mastery_percent: number; last_active_day: string | null
+    }>).map((r) => ({
+      userId: r.member_user_id,
+      songId: r.song_id,
+      songTitle: r.song_title,
+      inLibrary: r.in_library,
+      isKnown: r.is_known,
+      masteryPercent: r.mastery_percent,
+      lastActiveDay: r.last_active_day,
+    }))
+  }, [])
+
   const removeMember = useCallback(async (groupId: string, targetUserId: string): Promise<void> => {
     const { error } = await supabase
       .from('group_members').delete()
@@ -349,7 +366,7 @@ export function useGroups(userId: string) {
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
     approveSong, rejectSong,
     isGroupAdmin, isGroupApprover, isGroupModerator,
-    updateMemberRole, removeMember,
+    updateMemberRole, removeMember, getGroupMemberProgress,
     submitLyricReport, getLyricReports, dismissLyricReport,
   }
 }

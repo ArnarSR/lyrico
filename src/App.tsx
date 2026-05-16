@@ -133,7 +133,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
     getPracticeListSongs, addSongToPracticeList, removeSongFromPracticeList,
     approveSong, rejectSong,
     isGroupModerator,
-    updateMemberRole, removeMember,
+    updateMemberRole, removeMember, getGroupMemberProgress,
     pendingApprovals,
     submitLyricReport, getLyricReports, dismissLyricReport,
   } = useGroups(userId)
@@ -342,6 +342,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onLeaveGroup={leaveGroup}
         onUpdateMemberRole={updateMemberRole}
         onRemoveMember={removeMember}
+        onGetMemberProgress={getGroupMemberProgress}
         onAddToPractice={async (list) => {
           if (userLists.some((ul) => ul.sourcePracticeListId === list.id)) return
           const plSongs = await getPracticeListSongs(list.id)

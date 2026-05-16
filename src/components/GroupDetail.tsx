@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { Group, GroupMember, PracticeList, UserList, UserListType } from '../types'
+import type { Group, GroupMember, MemberSongProgress, PracticeList, UserList, UserListType } from '../types'
 import { Header, Shell } from './Shell'
 import { CreateListForm } from './CreateListForm'
 import { GroupScoreboard } from './GroupScoreboard'
+import { GroupMemberProgress } from './GroupMemberProgress'
 import { formatDateInput, parseDateInput } from '../lib/dates'
 
 interface GroupDetailProps {
@@ -18,6 +19,7 @@ interface GroupDetailProps {
   onAddToPractice: (list: PracticeList) => Promise<void>
   onUpdateMemberRole: (groupId: string, userId: string, newRole: 'approver' | 'member') => Promise<void>
   onRemoveMember: (groupId: string, userId: string) => Promise<void>
+  onGetMemberProgress: (groupId: string) => Promise<MemberSongProgress[]>
 }
 
 const DAY_MS = 86_400_000
@@ -26,7 +28,7 @@ function daysUntil(ts: number) { return Math.ceil((ts - Date.now()) / DAY_MS) }
 export function GroupDetail({
   group, userId, userLists, onBack, onOpenPracticeList,
   onGetDetails, onCreatePracticeList, onUpdatePracticeList, onLeaveGroup, onAddToPractice,
-  onUpdateMemberRole, onRemoveMember,
+  onUpdateMemberRole, onRemoveMember, onGetMemberProgress,
 }: GroupDetailProps) {
   // Map of group practice list id → user's personal list copying it (if any)
   const addedSources = new Set(userLists.map((ul) => ul.sourcePracticeListId).filter((id): id is string => !!id))
@@ -284,6 +286,23 @@ export function GroupDetail({
         <h2 className="mb-3 text-sm uppercase tracking-[0.15em] text-text-dim">🏆 This week</h2>
         <GroupScoreboard groupId={group.id} currentUserId={userId} />
       </section>
+
+      {/* Member progress — admins and approvers only */}
+      {isAdmin && (
+        <section className="mb-6">
+          <h2 className="mb-3 text-sm uppercase tracking-[0.15em] text-text-dim">Member Progress</h2>
+          {loading ? (
+            <p className="text-sm text-text-dim">Loading…</p>
+          ) : (
+            <GroupMemberProgress
+              groupId={group.id}
+              members={members}
+              currentUserId={userId}
+              onGetProgress={onGetMemberProgress}
+            />
+          )}
+        </section>
+      )}
 
       {/* Members */}
       <section className="mb-6">
