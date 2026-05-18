@@ -34,7 +34,7 @@ export function Profile({ profile, email, onBack, onUpdate, onSignOut }: Profile
   }
 
   return (
-    <Shell>
+    <Shell bottomPad>
       <Header
         title="Profile"
         right={

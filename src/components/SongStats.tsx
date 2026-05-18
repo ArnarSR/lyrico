@@ -72,7 +72,7 @@ export function SongStats({
   }
 
   return (
-    <Shell>
+    <Shell bottomPad>
       <Header
         title={song.title}
         subtitle={

@@ -206,7 +206,7 @@ export function GroupDetail({
   const nextConcert = concertLists.find((l) => l.concertDate && daysUntil(l.concertDate) >= 0)
   const nextConcertDays = nextConcert?.concertDate ? daysUntil(nextConcert.concertDate) : null
   return (
-    <Shell>
+    <Shell bottomPad>
       <Header
         title={group.name}
         subtitle={group.description}

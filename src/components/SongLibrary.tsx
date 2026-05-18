@@ -12,6 +12,7 @@ import { StudyStatsBanner } from './StudyStatsBanner'
 type Tab = 'practice' | 'mine' | 'lists' | 'groups'
 
 interface SongLibraryProps {
+  tab: Tab
   songs: Song[]
   groups: Group[]
   groupsLoading: boolean
@@ -83,6 +84,7 @@ function formatRelative(now: number, ts?: number): string {
 }
 
 export function SongLibrary({
+  tab,
   songs, groups, groupsLoading, allPracticeLists, userLists, listSongIds, pendingApprovals,
   onOpen, onStudy, onAdd, onSignOut, onOpenProfile, profileInitial,
   streak, todayCount, dailyGoal,
@@ -93,12 +95,11 @@ export function SongLibrary({
   // onSignOut is still accepted but no longer used in the header; sign-out lives in Profile now
   void onSignOut
   const now = useNow()
-  const [tab, setTab] = useState<Tab>('practice')
   const [showFeedback, setShowFeedback] = useState(false)
   const [approvalBannerDismissed, setApprovalBannerDismissed] = useState(false)
 
   return (
-    <Shell>
+    <Shell bottomPad>
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
 
       <Header
@@ -172,20 +173,6 @@ export function SongLibrary({
           listSongIds={listSongIds}
         />
       )}
-
-      {/* Tab bar */}
-      <div className="mb-5 flex gap-1 rounded-xl border border-border bg-bg-soft p-1">
-        {([['practice', 'Today'], ['mine', 'My Songs'], ['lists', 'Lists'], ['groups', 'Groups']] as [Tab, string][]).map(([t, label]) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`flex-1 rounded-lg py-2 text-xs transition-colors ${tab === t ? 'bg-bg-card text-accent' : 'text-text-dim hover:text-text'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
 
       {tab === 'practice' && (
         <PracticeTab

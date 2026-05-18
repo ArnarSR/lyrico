@@ -150,7 +150,7 @@ export function PracticeListDetail({
   const barColor = readiness === null ? '' : readiness < 50 ? 'bg-wrong/70' : readiness < 80 ? 'bg-accent' : 'bg-correct'
 
   return (
-    <Shell>
+    <Shell bottomPad>
       <Header
         title={list.name}
         subtitle={loading ? undefined : `${approvedSongs.length} song${approvedSongs.length !== 1 ? 's' : ''}${pendingSongs.length > 0 ? ` · ${pendingSongs.length} pending` : ''}`}

@@ -36,6 +36,38 @@ type View =
   | { name: 'practice-list'; list: PracticeList }
   | { name: 'profile' }
 
+type NavTab = 'practice' | 'mine' | 'lists' | 'groups'
+
+const NAV_ITEMS: { id: NavTab; label: string }[] = [
+  { id: 'practice', label: 'Today' },
+  { id: 'mine', label: 'Songs' },
+  { id: 'lists', label: 'Lists' },
+  { id: 'groups', label: 'Groups' },
+]
+
+const HIDE_NAV: View['name'][] = ['study', 'stanza', 'test', 'wordbank', 'add', 'edit-lyrics']
+
+function BottomNav({ active, onChange }: { active: NavTab; onChange: (tab: NavTab) => void }) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center">
+      <div className="w-full max-w-[560px] border-t border-border bg-bg/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+        <div className="flex">
+          {NAV_ITEMS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onChange(id)}
+              className={`flex-1 py-3 text-xs transition-colors ${active === id ? 'text-accent' : 'text-text-dim/60 hover:text-text-dim'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function LoadingScreen({ onSignOut }: { onSignOut: () => void }) {
   const [slow, setSlow] = useState(false)
   useEffect(() => {
@@ -139,6 +171,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
   } = useGroups(userId)
   const { profile, updateProfile } = useProfile(userId)
   const { streak, todayCount, dailyGoal, markCardReviewed, justReachedGoal, clearJustReachedGoal } = useStudyStats(userId)
+  const [currentTab, setCurrentTab] = useState<NavTab>('practice')
   const [view, setViewRaw] = useState<View>({ name: 'library' })
   const setView = useCallback((v: View | ((prev: View) => View)) => {
     setViewRaw((prev) => {
@@ -158,6 +191,15 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
 
   const handleGetGroupDetails = useCallback(getGroupDetails, [getGroupDetails])
   const mySongIds = useMemo(() => new Set(songs.map((s) => s.id)), [songs])
+
+  const showNav = !HIDE_NAV.includes(view.name)
+
+  function handleNavChange(tab: NavTab) {
+    setCurrentTab(tab)
+    if (view.name !== 'library') setView({ name: 'library' })
+  }
+
+  const bottomNav = showNav ? <BottomNav active={currentTab} onChange={handleNavChange} /> : null
 
   const celebration = justReachedGoal ? (
     <CelebrationToast
@@ -304,6 +346,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onCreateUserList={(name) => createUserList(name, 'standard')}
       />
       {celebration}
+      {bottomNav}
       </>
     )
   }
@@ -354,6 +397,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         }}
       />
       {celebration}
+      {bottomNav}
       </>
     )
   }
@@ -369,6 +413,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onSignOut={onSignOut}
       />
       {celebration}
+      {bottomNav}
       </>
     )
   }
@@ -409,6 +454,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         }}
       />
       {celebration}
+      {bottomNav}
       </>
     )
   }
@@ -416,6 +462,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
   return (
     <>
     <SongLibrary
+      tab={currentTab}
       songs={songs}
       groups={myGroups}
       groupsLoading={groupsLoading}
@@ -446,6 +493,7 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       onRemoveSongFromUserList={removeSongFromUserList}
     />
     {celebration}
+    {bottomNav}
     </>
   )
 }

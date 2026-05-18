@@ -5,10 +5,10 @@ interface ShellProps {
 }
 
 /** App frame: centered, mobile-first column capped at 560px. */
-export function Shell({ children }: ShellProps) {
+export function Shell({ children, bottomPad = false }: ShellProps & { bottomPad?: boolean }) {
   return (
     <div className="min-h-svh bg-bg text-text">
-      <div className="mx-auto flex min-h-svh w-full max-w-[560px] flex-col px-5 pb-10 pt-[max(1.25rem,env(safe-area-inset-top))]">
+      <div className={`mx-auto flex min-h-svh w-full max-w-[560px] flex-col px-5 pt-[max(1.25rem,env(safe-area-inset-top))] ${bottomPad ? 'pb-24' : 'pb-10'}`}>
         {children}
       </div>
     </div>
