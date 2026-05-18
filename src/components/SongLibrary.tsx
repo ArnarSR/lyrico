@@ -46,6 +46,30 @@ const DAY_MS = 86_400_000
 
 function daysUntil(ts: number, now: number) { return Math.ceil((ts - now) / DAY_MS) }
 
+function stageLabel(mastery: number): string {
+  if (mastery === 0) return 'Not started'
+  if (mastery <= 25) return 'Recognising'
+  if (mastery <= 50) return 'Learning'
+  if (mastery <= 75) return 'Recalling'
+  if (mastery < 100) return 'Approaching'
+  return 'Mastered'
+}
+
+function stageColor(mastery: number): string {
+  if (mastery === 0) return 'text-text-dim/50'
+  if (mastery <= 25) return 'text-wrong'
+  if (mastery <= 75) return 'text-accent'
+  if (mastery < 100) return 'text-accent'
+  return 'text-correct'
+}
+
+function songBarColor(mastery: number): string {
+  if (mastery === 0) return 'bg-bg-card'
+  if (mastery <= 25) return 'bg-wrong/70'
+  if (mastery < 100) return 'bg-accent'
+  return 'bg-correct'
+}
+
 function formatRelative(now: number, ts?: number): string {
   if (!ts) return 'never'
   const diff = now - ts
@@ -586,31 +610,30 @@ function PracticeListCard({
             <ul>
               {practiceSongs.map((song) => {
                 const mastery = masteryPercent(song)
-                const mColor = mastery < 30 ? 'text-wrong' : mastery < 70 ? 'text-accent' : 'text-correct'
+                const canStudy = !mySongIds || mySongIds.has(song.id)
                 return (
-                  <li key={song.id} className="flex items-center justify-between border-b border-border/40 px-4 py-3 last:border-b-0">
-                    <button type="button" onClick={() => onOpen(song.id)} className="min-w-0 text-left">
+                  <li key={song.id} className="flex items-stretch border-b border-border/40 last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => canStudy ? onStudy(song.id) : onOpen(song.id)}
+                      className="flex min-w-0 flex-1 flex-col justify-center px-4 py-3 text-left hover:bg-white/[0.02]"
+                    >
                       <p className="truncate text-sm text-text">{song.title}</p>
-                      <p className={`text-xs ${mColor}`}>{mastery}%</p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-bg-card">
+                          <div className={`h-full rounded-full ${songBarColor(mastery)}`} style={{ width: `${mastery}%` }} />
+                        </div>
+                        <span className={`shrink-0 text-xs ${stageColor(mastery)}`}>{stageLabel(mastery)}</span>
+                      </div>
                     </button>
-                    <div className="ml-3 flex shrink-0 items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onToggleKnown(song.id)}
-                        className="rounded-full border border-border px-2.5 py-1 text-xs text-text-dim hover:border-correct/50 hover:text-correct"
-                      >
-                        Know it
-                      </button>
-                      {(!mySongIds || mySongIds.has(song.id)) && (
-                        <button
-                          type="button"
-                          onClick={() => onStudy(song.id)}
-                          className="rounded-full border border-accent/30 bg-accent/15 px-2.5 py-1 text-xs text-accent hover:bg-accent/25"
-                        >
-                          Study
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onToggleKnown(song.id)}
+                      className="flex w-12 shrink-0 items-center justify-center border-l border-border/40 text-text-dim/40 hover:text-correct hover:bg-correct/5"
+                      title="Mark as known"
+                    >
+                      ✓
+                    </button>
                   </li>
                 )
               })}
@@ -1013,42 +1036,41 @@ function MySongsTab({ songs, now, onOpen, onStudy, onAdd, onTogglePublic }: MySo
 
 // ── Song row ──────────────────────────────────────────────────────────────────
 
-function SongRow({ song, now, onOpen, onStudy, onTogglePublic }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onTogglePublic: () => void }) {
+function SongRow({ song, now, onStudy, onTogglePublic }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onTogglePublic: () => void }) {
   const mastery = masteryPercent(song)
   const concertDays = song.concertDate ? daysUntil(song.concertDate, now) : null
   const concertUrgent = concertDays !== null && concertDays <= 7
 
   return (
-    <div className="rounded-2xl border border-border bg-bg-soft">
-      <button type="button" onClick={onOpen} className="block w-full px-4 pt-4 text-left">
+    <div className="flex items-stretch overflow-hidden rounded-2xl border border-border bg-bg-soft">
+      <button type="button" onClick={onStudy} className="flex min-w-0 flex-1 flex-col px-4 py-3.5 text-left hover:bg-white/[0.02]">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="truncate text-lg text-text">{song.title}</h2>
-          <span className="shrink-0 text-sm text-accent">{mastery}%</span>
-        </div>
-        <p className="mt-0.5 truncate text-sm text-text-dim">
-          {[song.composer, song.voicePart].filter(Boolean).join(' · ') || `${song.cards.length} lines`}
-        </p>
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-bg-card">
-          <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${mastery}%` }} />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-dim">
-          <span>Last practiced {formatRelative(now, song.lastStudied)}</span>
+          <h2 className="truncate text-base text-text">{song.title}</h2>
           {concertDays !== null && (
-            <span className={concertUrgent ? 'text-wrong' : 'text-accent-soft'}>
-              · Concert in {Math.max(0, concertDays)}d
+            <span className={`shrink-0 text-xs ${concertUrgent ? 'text-wrong' : 'text-text-dim'}`}>
+              🗓 {Math.max(0, concertDays)}d
             </span>
           )}
         </div>
+        <p className="mt-0.5 truncate text-xs text-text-dim">
+          {[song.composer, song.voicePart].filter(Boolean).join(' · ') || `${song.cards.length} lines`}
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-bg-card">
+            <div className={`h-full rounded-full transition-[width] ${songBarColor(mastery)}`} style={{ width: `${mastery}%` }} />
+          </div>
+          <span className={`shrink-0 text-xs ${stageColor(mastery)}`}>{stageLabel(mastery)}</span>
+        </div>
+        <p className="mt-1.5 text-xs text-text-dim/50">Last practiced {formatRelative(now, song.lastStudied)}</p>
       </button>
-      <div className="mt-3 flex border-t border-border">
-        <button type="button" onClick={onOpen} className="flex-1 py-3 text-sm text-text-dim hover:text-text">Details</button>
-        <div className="w-px bg-border" />
-        <button type="button" onClick={onTogglePublic} className={`flex-1 py-3 text-sm ${song.isPublic ? 'text-accent' : 'text-text-dim hover:text-text'}`}>
-          {song.isPublic ? 'Shared ✓' : 'Share'}
-        </button>
-        <div className="w-px bg-border" />
-        <button type="button" onClick={onStudy} className="flex-1 py-3 text-sm text-accent hover:brightness-110">Study</button>
-      </div>
+      <button
+        type="button"
+        onClick={onTogglePublic}
+        className={`flex w-12 shrink-0 items-center justify-center border-l border-border text-xs ${song.isPublic ? 'text-accent' : 'text-text-dim/30 hover:text-text-dim'}`}
+        title={song.isPublic ? 'Shared' : 'Share'}
+      >
+        {song.isPublic ? '⇧' : '⇧'}
+      </button>
     </div>
   )
 }
