@@ -51,7 +51,7 @@ export function GroupScoreboard({ groupId, currentUserId }: GroupScoreboardProps
                 </span>
               )}
               <span className="text-text-dim">
-                {e.cardsThisWeek} card{e.cardsThisWeek !== 1 ? 's' : ''}
+                {e.cardsThisWeek} line{e.cardsThisWeek !== 1 ? 's' : ''} practiced
               </span>
             </div>
           </li>

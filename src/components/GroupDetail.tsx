@@ -202,6 +202,9 @@ export function GroupDetail({
     )
   }
 
+  // Next upcoming concert for the hero card
+  const nextConcert = concertLists.find((l) => l.concertDate && daysUntil(l.concertDate) >= 0)
+  const nextConcertDays = nextConcert?.concertDate ? daysUntil(nextConcert.concertDate) : null
   return (
     <Shell>
       <Header
@@ -214,23 +217,35 @@ export function GroupDetail({
         }
       />
 
-      {/* Invite code */}
-      <div className="mb-6 rounded-2xl border border-border bg-bg-soft p-4">
-        <p className="mb-2 text-xs uppercase tracking-[0.15em] text-text-dim">Invite code</p>
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-2xl tracking-widest text-text">{group.inviteCode}</span>
+      {/* ① Next concert — leads the page */}
+      {nextConcert && (
+        <div className="mb-5 rounded-2xl border border-accent/25 bg-bg-soft p-4">
+          <p className="mb-1 text-xs uppercase tracking-[0.15em] text-text-dim/60">Next concert</p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-lg text-text">{nextConcert.name}</p>
+            {nextConcertDays !== null && (
+              <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${nextConcertDays <= 1 ? 'border-wrong/30 bg-wrong/10 text-wrong' : nextConcertDays <= 7 ? 'border-accent/30 bg-accent/10 text-accent' : 'border-border text-text-dim'}`}>
+                🗓 {nextConcertDays === 0 ? 'Today!' : nextConcertDays === 1 ? 'Tomorrow' : `${nextConcertDays}d left`}
+              </span>
+            )}
+          </div>
           <button
             type="button"
-            onClick={copyCode}
-            className="rounded-full border border-border px-3 py-1 text-xs text-text-dim hover:text-text"
+            onClick={() => onOpenPracticeList(nextConcert)}
+            className="mt-3 w-full rounded-full border border-accent/30 bg-accent/10 py-2.5 text-sm text-accent hover:bg-accent/20"
           >
-            {codeCopied ? 'Copied!' : 'Copy'}
+            ▶ Practice concert songs
           </button>
         </div>
-        <p className="mt-1 text-xs text-text-dim/70">Share this code so others can join your group.</p>
-      </div>
+      )}
 
-      {/* Practice lists */}
+      {/* ② Scoreboard */}
+      <section className="mb-6">
+        <h2 className="mb-3 text-sm uppercase tracking-[0.15em] text-text-dim">🏆 This week</h2>
+        <GroupScoreboard groupId={group.id} currentUserId={userId} />
+      </section>
+
+      {/* ③ Practice lists */}
       <section className="mb-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm uppercase tracking-[0.15em] text-text-dim">Practice lists</h2>
@@ -245,7 +260,6 @@ export function GroupDetail({
           )}
         </div>
 
-        {/* Create form */}
         {showCreateForm && (
           <div className="mb-4">
             <CreateListForm
@@ -281,13 +295,7 @@ export function GroupDetail({
         )}
       </section>
 
-      {/* This week's scoreboard */}
-      <section className="mb-6">
-        <h2 className="mb-3 text-sm uppercase tracking-[0.15em] text-text-dim">🏆 This week</h2>
-        <GroupScoreboard groupId={group.id} currentUserId={userId} />
-      </section>
-
-      {/* Member progress — admins and approvers only */}
+      {/* Member progress — admins only */}
       {isAdmin && (
         <section className="mb-6">
           <h2 className="mb-3 text-sm uppercase tracking-[0.15em] text-text-dim">Member Progress</h2>
@@ -372,6 +380,22 @@ export function GroupDetail({
           </>
         )}
       </section>
+
+      {/* ④ Invite code — moved to bottom */}
+      <div className="mb-6 rounded-2xl border border-border bg-bg-soft p-4">
+        <p className="mb-2 text-xs uppercase tracking-[0.15em] text-text-dim/60">Invite members</p>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-2xl tracking-widest text-text">{group.inviteCode}</span>
+          <button
+            type="button"
+            onClick={copyCode}
+            className="rounded-full border border-border px-3 py-1 text-xs text-text-dim hover:text-text"
+          >
+            {codeCopied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-text-dim/60">Share this code so others can join.</p>
+      </div>
 
       {/* Leave group */}
       {!isAdmin && (

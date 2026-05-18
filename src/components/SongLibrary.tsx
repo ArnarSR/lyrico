@@ -175,7 +175,7 @@ export function SongLibrary({
 
       {/* Tab bar */}
       <div className="mb-5 flex gap-1 rounded-xl border border-border bg-bg-soft p-1">
-        {([['practice', 'Practice'], ['mine', 'My Songs'], ['lists', 'Lists'], ['groups', 'Groups']] as [Tab, string][]).map(([t, label]) => (
+        {([['practice', 'Today'], ['mine', 'My Songs'], ['lists', 'Lists'], ['groups', 'Groups']] as [Tab, string][]).map(([t, label]) => (
           <button
             key={t}
             type="button"
@@ -343,8 +343,72 @@ function PracticeTab({
   const standardLists = resolvedUserLists.filter(({ meta }) => meta.listType === 'standard')
   const hasLists = userLists.length > 0 || allPracticeLists.length > 0
 
+  // Build smart practice queue from the soonest upcoming concert
+  const practiceQueue = (() => {
+    type Entry = { name: string; daysLeft: number; songs: Song[] }
+    const entries: Entry[] = []
+    for (const { list, meta } of resolvedUserLists) {
+      if (meta.listType !== 'concert' || !meta.concertDate) continue
+      const dl = daysUntil(meta.concertDate, now)
+      if (dl < 0) continue
+      const ids = listSongIds.get(list.id) ?? new Set<string>()
+      entries.push({ name: meta.name, daysLeft: dl, songs: songs.filter((s) => ids.has(s.id)) })
+    }
+    for (const pl of allPracticeLists) {
+      if (pl.listType !== 'concert' || !pl.concertDate) continue
+      if (userLists.some((ul) => ul.sourcePracticeListId === pl.id)) continue
+      const dl = daysUntil(pl.concertDate, now)
+      if (dl < 0) continue
+      const raw = fetchedSongs.get(pl.id) ?? []
+      entries.push({ name: pl.name, daysLeft: dl, songs: raw.map((gs) => songs.find((s) => s.id === gs.id) ?? gs) })
+    }
+    if (entries.length === 0) return null
+    entries.sort((a, b) => a.daysLeft - b.daysLeft)
+    const { name, daysLeft, songs: listSongsLocal } = entries[0]
+    const queue = listSongsLocal
+      .filter((s) => !s.isKnown && masteryPercent(s) < 100)
+      .sort((a, b) => masteryPercent(a) - masteryPercent(b))
+    return { name, daysLeft, queue }
+  })()
+
   return (
     <div className="flex flex-col gap-3">
+
+      {/* ── Start Practice card ── */}
+      {practiceQueue && practiceQueue.queue.length > 0 && (
+        <div className="rounded-2xl border border-accent/25 bg-bg-soft p-4">
+          <div className="mb-3 flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs uppercase tracking-[0.12em] text-text-dim/60">Next concert</p>
+              <p className="mt-0.5 text-base text-text">{practiceQueue.name}</p>
+            </div>
+            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs ${practiceQueue.daysLeft <= 1 ? 'bg-wrong/10 text-wrong' : practiceQueue.daysLeft <= 7 ? 'bg-accent/10 text-accent' : 'border border-border text-text-dim'}`}>
+              🗓 {practiceQueue.daysLeft === 0 ? 'Today!' : practiceQueue.daysLeft === 1 ? 'Tomorrow' : `${practiceQueue.daysLeft}d left`}
+            </span>
+          </div>
+          <ul className="mb-3 flex flex-col divide-y divide-border/40">
+            {practiceQueue.queue.slice(0, 3).map((s) => {
+              const m = masteryPercent(s)
+              return (
+                <li key={s.id} className="flex items-center justify-between gap-2 py-2">
+                  <span className="min-w-0 truncate text-sm text-text">{s.title}</span>
+                  <span className={`shrink-0 text-xs ${stageColor(m)}`}>{stageLabel(m)}</span>
+                </li>
+              )
+            })}
+            {practiceQueue.queue.length > 3 && (
+              <li className="py-2 text-xs text-text-dim/60">+{practiceQueue.queue.length - 3} more songs</li>
+            )}
+          </ul>
+          <button
+            type="button"
+            onClick={() => onStudy(practiceQueue.queue[0].id)}
+            className="w-full rounded-full bg-accent py-2.5 text-sm font-medium text-bg hover:brightness-110"
+          >
+            ▶ Start practice
+          </button>
+        </div>
+      )}
 
       {/* ── Concert Repertoire ── */}
       {(concertLists.length > 0 || allPracticeLists.length > 0) && (
@@ -611,6 +675,11 @@ function PracticeListCard({
               {practiceSongs.map((song) => {
                 const mastery = masteryPercent(song)
                 const canStudy = !mySongIds || mySongIds.has(song.id)
+                const urgentBadge = daysLeft !== null && daysLeft <= 1
+                  ? (daysLeft === 0 ? 'Concert today!' : 'Concert tomorrow')
+                  : daysLeft !== null && daysLeft <= 7
+                    ? `Concert in ${daysLeft}d`
+                    : null
                 return (
                   <li key={song.id} className="flex items-stretch border-b border-border/40 last:border-b-0">
                     <button
@@ -618,7 +687,14 @@ function PracticeListCard({
                       onClick={() => canStudy ? onStudy(song.id) : onOpen(song.id)}
                       className="flex min-w-0 flex-1 flex-col justify-center px-4 py-3 text-left hover:bg-white/[0.02]"
                     >
-                      <p className="truncate text-sm text-text">{song.title}</p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="min-w-0 truncate text-sm text-text">{song.title}</p>
+                        {urgentBadge && (
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] leading-tight ${daysLeft! <= 1 ? 'bg-wrong/10 text-wrong' : 'bg-accent/10 text-accent'}`}>
+                            {urgentBadge}
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-1.5 flex items-center gap-2">
                         <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-bg-card">
                           <div className={`h-full rounded-full ${songBarColor(mastery)}`} style={{ width: `${mastery}%` }} />
