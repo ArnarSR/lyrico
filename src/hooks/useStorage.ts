@@ -233,17 +233,24 @@ export function useStorage(userId: string) {
 
     setSongs((prev) => [song, ...prev])
 
-    supabase.from('songs').insert(songRow).then(({ error }) => {
-      if (error) console.error('addSong (songs):', error)
-    })
-    supabase.from('user_song_library').insert({
-      user_id: userId, song_id: songId, is_known: false, added_at: now,
-    }).then(({ error }) => {
-      if (error) console.error('addSong (library):', error)
-    })
-    supabase.from('cards').insert(cardRows).then(({ error }) => {
-      if (error) console.error('addSong (cards):', error)
-    })
+    // user_song_library and cards both carry a foreign key to songs(id), so the
+    // song row has to land first — firing all three at once loses the race often
+    // enough that songs came back empty (or missing entirely) after a reload.
+    void (async () => {
+      const { error: songError } = await supabase.from('songs').insert(songRow)
+      if (songError) {
+        console.error('addSong (songs):', songError)
+        return
+      }
+      const [libResult, cardsResult] = await Promise.all([
+        supabase.from('user_song_library').insert({
+          user_id: userId, song_id: songId, is_known: false, added_at: now,
+        }),
+        supabase.from('cards').insert(cardRows),
+      ])
+      if (libResult.error) console.error('addSong (library):', libResult.error)
+      if (cardsResult.error) console.error('addSong (cards):', cardsResult.error)
+    })()
 
     return song
   }, [userId])
