@@ -7,16 +7,22 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@supabase/supabase-js": "^2.105.4",
     "posthog-js": "^1.373.4",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.2.3",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
@@ -30,6 +36,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^7.3.2",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^5.0.1"
   }
 }

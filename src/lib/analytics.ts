@@ -3,6 +3,9 @@ import posthog from 'posthog-js'
 const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY as string | undefined
 const POSTHOG_HOST = (import.meta.env.VITE_POSTHOG_HOST as string | undefined) ?? 'https://eu.i.posthog.com'
 
+/** False when no PostHog key is configured — analytics and feature flags then no-op. */
+export const analyticsEnabled = !!POSTHOG_KEY
+
 let initialized = false
 
 export function initAnalytics() {
