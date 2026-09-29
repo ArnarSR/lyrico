@@ -1,6 +1,8 @@
 /**
- * Shared plumbing for the Claude-backed endpoints. Files under `api/` whose
- * name starts with `_` are not routes, so this is a plain module.
+ * Shared plumbing for the Claude-backed endpoints in api/.
+ *
+ * It lives outside api/ on purpose: Vercel turns every file in that directory
+ * into a function, and a module with no default export fails the build.
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
