@@ -72,9 +72,9 @@ export const FLAG_META: Record<FlagKey, FlagMeta> = {
   },
   'save-qa-checklist': {
     label: 'Save checklist',
-    area: 'New song / Edit lyrics',
+    area: 'Saving',
     description:
-      'A countable summary — lines, empty rows, leftovers, translation, rehearsal fields — to confirm before lyrics are written.',
+      'A countable summary — lines, empty rows, leftovers, translation, rehearsal fields — to confirm before lyrics are written. Runs on both New song and Edit lyrics.',
   },
 }
 
