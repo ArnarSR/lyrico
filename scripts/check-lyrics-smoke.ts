@@ -3,7 +3,9 @@
  *
  * Unit tests cover the client side; this is the only way to see whether the
  * prompt and the schema in api/check-lyrics.ts actually hold up on real text.
- * It calls the edge handler directly, so there is no dev server to start.
+ * It calls the edge handler directly, so there is no dev server to start. It
+ * runs through vite-node because the endpoints import shared code without a
+ * file extension — the only form Vercel's function builder accepts.
  *
  * The key comes from ANTHROPIC_API_KEY, in the environment or in .env (which is
  * gitignored). It is a server-side key: never give it a VITE_ prefix, or Vite
@@ -17,7 +19,7 @@
  * Costs a few cents per run, more with --verify.
  */
 import { readFileSync } from 'node:fs'
-import handler from '../api/check-lyrics.ts'
+import handler from '../api/check-lyrics'
 
 /**
  * A scrape of a scanned hymn page, with one of every problem the reviewer is

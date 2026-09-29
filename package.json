@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "smoke:check-lyrics": "node --env-file-if-exists=.env scripts/check-lyrics-smoke.ts"
+    "smoke:check-lyrics": "node --env-file-if-exists=.env node_modules/vite-node/dist/cli.mjs scripts/check-lyrics-smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
@@ -37,6 +37,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^7.3.2",
+    "vite-node": "^6.0.0",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^5.0.1"
   }
