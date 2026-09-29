@@ -100,6 +100,27 @@ export function trackLyricsSavedWithIssues(verdict: string, issueCount: number) 
   track('lyrics_saved_with_issues', { verdict, issue_count: issueCount })
 }
 
+// Line editing (src/lib/lineEdit.ts, src/lib/phrases.ts)
+export function trackWordMoved(direction: 'prev' | 'next') { track('lyrics_word_moved', { direction }) }
+export function trackLineSplit() { track('lyrics_line_split') }
+export function trackLinesRedetected(where: 'add' | 'edit', merged: number, split: number, translations: number) {
+  track('lyrics_lines_redetected', { where, merged, split, translations })
+}
+export function trackLinesRedetectUndone(where: 'add' | 'edit') {
+  track('lyrics_lines_redetect_undone', { where })
+}
+export function trackTranslationSwapped(where: 'add' | 'edit') {
+  track('lyrics_translation_swapped', { where })
+}
+
+// Save checklist (src/lib/saveQa.ts)
+export function trackSaveQaShown(where: 'add' | 'edit', lineCount: number, warnings: number) {
+  track('save_qa_shown', { where, line_count: lineCount, warnings })
+}
+export function trackSaveQaResolved(where: 'add' | 'edit', action: 'confirmed' | 'cancelled', warnings: number) {
+  track('save_qa_resolved', { where, action, warnings })
+}
+
 // Study sessions
 export function trackStudyStarted(songId: string, cardCount: number, source: string) {
   track('study_started', { song_id: songId, card_count: cardCount, source })

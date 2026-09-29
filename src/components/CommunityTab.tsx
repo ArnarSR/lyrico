@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Song, PracticeList } from '../types'
+import { cardLineCount } from '../lib/translation'
 
 interface CommunityTabProps {
   songs: Song[]
@@ -30,7 +31,7 @@ export function CommunityTab({ songs, mySongIds, practiceLists, onAddToLibrary, 
               <p className="truncate text-base text-text">{song.title}</p>
               {song.composer && <p className="mt-0.5 truncate text-sm text-text-dim">{song.composer}</p>}
               <p className="mt-1 text-xs text-text-dim/60">
-                {song.lyrics.split('\n').filter((l) => l.trim()).length} lines
+                {cardLineCount(song.lyrics)} lines
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 items-end">

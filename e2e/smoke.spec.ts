@@ -57,6 +57,9 @@ async function addSong(page: Page, title: string, lyrics: string) {
   const libraryWrite = waitForWrite(page, 'user_song_library')
   const cardsWrite = waitForWrite(page, 'cards')
   await page.getByRole('button', { name: 'Save song' }).click()
+  // Saving goes through the checklist (src/lib/saveQa.ts) before anything is
+  // written; nothing reaches Postgres until it is confirmed.
+  await page.getByRole('button', { name: 'Confirm and save song' }).click()
   await Promise.all([libraryWrite, cardsWrite])
 }
 

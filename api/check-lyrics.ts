@@ -76,7 +76,7 @@ WHAT TO FLAG
 - line_break — a row holding several sung lines (too much for one flashcard), or a sung line split across two rows mid-phrase.
 - wrong_word — a word that looks like a mishearing, a typo or the wrong inflection for this text.
 - missing_text — a verse or refrain that plainly belongs to this work and is not here. Say which one; never write it in yourself unless you retrieved it.
-- language_mix — a translation interleaved with the original, or two languages mixed in one text. The singer wants only the text they sing.
+- language_mix — two languages mixed in one text where it is not clear which one is sung. A translation is NOT an error: the app keeps it, on a row of its own prefixed "> ", under the line it translates, and shows it to the singer only after they have answered. So when you find a translation the app has not marked — interleaved with the original, in brackets, or as a block of its own — flag it as language_mix and put the markers in cleanedLyrics rather than deleting the text.
 - punctuation — punctuation or capitalisation so inconsistent that it will trip up recall.
 - metadata — the title or composer given does not match the text.
 - copyright — the text looks like it is still under copyright. Songs can be shared with other users from this app, so say so plainly.
@@ -88,6 +88,10 @@ RULES
 2. Never invent lyrics. Do not add, complete or extend the text from memory. Only text you actually retrieved from a source in this turn may be treated as established, and then you must list the source.
 
 3. cleanedLyrics must contain exactly the fixes you flagged and nothing else — same text, same order, same language, no line numbers, stanza blank lines preserved. If the only issues are ones you cannot fix mechanically (missing_text, copyright, metadata), return an empty string. Removing more than a few lines is a red flag: prefer flagging to deleting.
+
+6. A row that already starts with "> " is a translation the app is keeping. Do not count it as a line to sing, do not drill it, do not flag it as not_lyrics, and copy it through to cleanedLyrics unchanged unless the translation itself is damaged. Judge the sung text on the other rows alone.
+
+7. One row is one flashcard, so line layout is part of the text. Each row should hold one sung phrase — what a singer takes in one breath. Flag a row holding two phrases, and a phrase broken across two rows, as line_break, and fix both in cleanedLyrics.
 
 4. When the text is fine, say so: verdict "clean", empty issues array, empty cleanedLyrics. Do not invent problems to look useful. A plain, correctly typed text with no markings is the normal case.
 
@@ -108,7 +112,9 @@ It was scraped from a web page, so assume the page's own furniture came with it.
 
 WHERE THIS TEXT CAME FROM
 
-It was read off a sheet-music scan, so expect scan artifacts: syllables still split by hyphens, dynamics and tempo markings, bar numbers, rehearsal letters, voice and instrument labels, footnote markers, and lines in the wrong order where the reader crossed a system break. Verse labels such as "Vers 1:" are the extractor's own, not text to sing.`,
+It was read off a sheet-music scan, so expect scan artifacts: syllables still split by hyphens, dynamics and tempo markings, bar numbers, rehearsal letters, voice and instrument labels, footnote markers, and lines in the wrong order where the reader crossed a system break. Verse labels such as "Vers 1:" are the extractor's own, not text to sing.
+
+A deterministic pass has already rejoined syllables, dropped markings and re-phrased the rows, and has marked any translation it recognised with "> ". What it leaves behind is what needs judgement: a phrase boundary only a musician can place, a translation printed in a layout it could not recognise, and words the reader misread.`,
   typed: `
 
 WHERE THIS TEXT CAME FROM

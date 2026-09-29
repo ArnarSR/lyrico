@@ -3,7 +3,9 @@ import type { Song } from '../types'
 import { getStanzaStarts } from '../lib/stanzas'
 import { scoreAnswer } from '../lib/scoring'
 import { Feedback } from './Feedback'
+import { TranslationReveal } from './TranslationReveal'
 import { Header, IconButton, Shell } from './Shell'
+import { useFeatureFlag } from '../hooks/useFeatureFlag'
 
 interface StanzaSessionProps {
   song: Song
@@ -11,6 +13,7 @@ interface StanzaSessionProps {
 }
 
 export function StanzaSession({ song, onExit }: StanzaSessionProps) {
+  const showTranslation = useFeatureFlag('translation-reveal')
   const stanzaStarts = getStanzaStarts(song.lyrics)
 
   const [idx, setIdx] = useState(0)
@@ -182,6 +185,10 @@ export function StanzaSession({ song, onExit }: StanzaSessionProps) {
           showDiff
           hintUsed={checked.hintUsed}
         />
+      )}
+
+      {checked && showTranslation && (
+        <TranslationReveal translation={card.translation} language={song.translationLanguage} />
       )}
 
       <div className="mt-5">

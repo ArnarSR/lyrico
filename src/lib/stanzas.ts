@@ -7,9 +7,29 @@ export function isSectionLabel(line: string): boolean {
 }
 
 /**
+ * The marker that makes a row a translation of the line above it, rather than
+ * text to sing. src/lib/translation.ts owns the concept and re-exports these;
+ * the primitives live here with the other line predicates so the two modules do
+ * not have to import each other.
+ */
+export const TRANSLATION_PREFIX = '> '
+
+const TRANSLATION_LINE_RE = /^>\s?/
+
+export function isTranslationLine(line: string): boolean {
+  return TRANSLATION_LINE_RE.test(line.trimStart())
+}
+
+/** The translation text of a marked row, without its marker. */
+export function translationText(line: string): string {
+  return line.trimStart().replace(TRANSLATION_LINE_RE, '').trim()
+}
+
+/**
  * Returns the lineIndex of the first line of each stanza.
  * Stanzas are separated by blank (whitespace-only) lines in the raw lyrics.
- * Section label lines (e.g. "Verse 1", "Chorus") are skipped.
+ * Section label lines (e.g. "Verse 1", "Chorus") are skipped, as are
+ * translation rows — neither becomes a card, so neither carries a lineIndex.
  */
 export function getStanzaStarts(lyrics: string): number[] {
   const lines = lyrics.split('\n')
@@ -18,6 +38,7 @@ export function getStanzaStarts(lyrics: string): number[] {
   let atStart = true
 
   for (const line of lines) {
+    if (isTranslationLine(line)) continue
     if (line.trim() === '' || isSectionLabel(line)) {
       atStart = true
     } else {

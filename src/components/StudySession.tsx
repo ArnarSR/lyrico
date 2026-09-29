@@ -6,7 +6,9 @@ import type { Segment } from '../lib/blanks'
 import { normalize, scoreAnswer, fuzzyWordMatch } from '../lib/scoring'
 import { trackStudyStarted, trackStudyCompleted, trackStudyExited } from '../lib/analytics'
 import { Feedback } from './Feedback'
+import { TranslationReveal } from './TranslationReveal'
 import { Header, IconButton, Shell } from './Shell'
+import { useFeatureFlag } from '../hooks/useFeatureFlag'
 
 interface StudySessionProps {
   song: Song
@@ -26,6 +28,7 @@ export function StudySession({
   onReportLine,
 }: StudySessionProps) {
   const { review } = useSM2()
+  const showTranslation = useFeatureFlag('translation-reveal')
   // activeCards is the working set for this session (all or a single verse).
   const activeCards = activeProp ?? song.cards
 
@@ -463,6 +466,11 @@ export function StudySession({
           fullLine={current.text}
           showDiff={!isInline}
         />
+      )}
+
+      {/* The translation is the strongest hint there is, so it waits for Check. */}
+      {checked && showTranslation && (
+        <TranslationReveal translation={current.translation} language={song.translationLanguage} />
       )}
 
       {checked && onReportLine && (

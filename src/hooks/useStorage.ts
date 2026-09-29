@@ -3,6 +3,12 @@ import type { Card, Song, UserList, UserListType } from '../types'
 import { uid } from '../lib/id'
 import { makeCard } from './useSM2'
 import { isSectionLabel } from '../lib/stanzas'
+import {
+  attachTranslations,
+  detectLanguage,
+  stripTranslations,
+  translationsByLineIndex,
+} from '../lib/translation'
 import { supabase } from '../lib/supabase'
 import { captureException } from '../lib/analytics'
 
@@ -106,12 +112,16 @@ function cardToRow(card: Card, songId: string, userId: string): CardRow {
 const DAY_MS = 86_400_000
 
 function buildSong(songRow: SongRow, cardRows: CardRow[], isKnown: boolean): Song {
+  // Translations live in the raw lyrics, not in the cards table, so they are
+  // re-attached by position here. See src/lib/translation.ts for why.
+  const translations = translationsByLineIndex(songRow.lyrics)
+
   const cards = cardRows
     .filter((c) => c.song_id === songRow.id)
     .sort((a, b) => a.line_index - b.line_index)
     .map(rowToCard)
     .filter((c) => !isSectionLabel(c.text))
-    .map((c, i) => ({ ...c, lineIndex: i }))
+    .map((c, i) => ({ ...c, lineIndex: i, translation: translations[i] }))
 
   const lastStudied = cards.reduce<number | undefined>((max, c) => {
     if (c.lastQuality === null) return max
@@ -134,7 +144,21 @@ function buildSong(songRow: SongRow, cardRows: CardRow[], isKnown: boolean): Son
     isKnown,
     ownerId: songRow.user_id,
     lastStudied,
+    translationLanguage:
+      detectLanguage(translations.filter(Boolean).join(' ')) ?? undefined,
   }
+}
+
+/**
+ * The rows that become cards: sung text only, with blank rows, section labels
+ * and translation rows dropped. Every place that turns lyrics into cards goes
+ * through here so a translation can never become a card of its own.
+ */
+function cardLines(lyrics: string): string[] {
+  return stripTranslations(lyrics)
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !isSectionLabel(l))
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -208,10 +232,7 @@ export function useStorage(userId: string) {
 
   const addSong = useCallback((input: NewSongInput): Song => {
     const now = Date.now()
-    const lines = input.lyrics
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0 && !isSectionLabel(l))
+    const lines = cardLines(input.lyrics)
     const cards: Card[] = lines.map((text, i) => makeCard(uid(), i, text, now))
     const songId = uid()
 
@@ -258,11 +279,12 @@ export function useStorage(userId: string) {
   // Add an existing song (owned by someone else) to this user's library with fresh cards.
   const addSongToLibrary = useCallback((source: Song): Song => {
     const now = Date.now()
-    const lines = source.lyrics
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0 && !isSectionLabel(l))
-    const freshCards: Card[] = lines.map((text, i) => makeCard(uid(), i, text, now))
+    const lines = cardLines(source.lyrics)
+    const translations = translationsByLineIndex(source.lyrics)
+    const freshCards: Card[] = lines.map((text, i) => ({
+      ...makeCard(uid(), i, text, now),
+      translation: translations[i],
+    }))
     const song: Song = { ...source, isKnown: false, cards: freshCards, lastStudied: undefined }
 
     setSongs((prev) => [...prev, song])
@@ -461,7 +483,7 @@ export function useStorage(userId: string) {
    */
   const editSongLines = useCallback(async (
     songId: string,
-    newLines: { id?: string; text: string }[],
+    newLines: { id?: string; text: string; translation?: string }[],
   ) => {
     const song = songs.find((s) => s.id === songId)
     if (!song) return
@@ -472,14 +494,16 @@ export function useStorage(userId: string) {
     const updatedCards: Card[] = newLines.map((line, i) => {
       if (line.id && existingById.has(line.id)) {
         const existing = existingById.get(line.id)!
-        return { ...existing, lineIndex: i, text: line.text }
+        return { ...existing, lineIndex: i, text: line.text, translation: line.translation }
       }
-      return makeCard(uid(), i, line.text, now)
+      return { ...makeCard(uid(), i, line.text, now), translation: line.translation }
     })
 
     const keptIds = new Set(updatedCards.map((c) => c.id))
     const deletedIds = song.cards.map((c) => c.id).filter((id) => !keptIds.has(id))
-    const newLyrics = newLines.map((l) => l.text).join('\n')
+    // Translations are part of the raw lyrics, so they are written back with the
+    // lines they belong to — regenerating from text alone would drop them.
+    const newLyrics = attachTranslations(newLines)
 
     setSongs((prev) => prev.map((s) =>
       s.id === songId ? { ...s, lyrics: newLyrics, cards: updatedCards } : s,

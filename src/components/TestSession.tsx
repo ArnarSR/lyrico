@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { Song } from '../types'
 import { scoreAnswer } from '../lib/scoring'
 import { Feedback } from './Feedback'
+import { TranslationReveal } from './TranslationReveal'
 import { Header, IconButton, Shell } from './Shell'
+import { useFeatureFlag } from '../hooks/useFeatureFlag'
 
 interface TestSessionProps {
   song: Song
@@ -13,6 +15,7 @@ interface TestSessionProps {
 const PASS_THRESHOLD = 0.8
 
 export function TestSession({ song, onExit, onMasterSong }: TestSessionProps) {
+  const showTranslation = useFeatureFlag('translation-reveal')
   const cards = song.cards
   const total = cards.length
 
@@ -200,6 +203,10 @@ export function TestSession({ song, onExit, onMasterSong }: TestSessionProps) {
           fullLine={current.text}
           showDiff
         />
+      )}
+
+      {checked && showTranslation && (
+        <TranslationReveal translation={current.translation} language={song.translationLanguage} />
       )}
 
       <div className="mt-5">

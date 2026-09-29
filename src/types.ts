@@ -30,6 +30,13 @@ export interface Card {
   id: string
   lineIndex: number
   text: string
+  /**
+   * The line's meaning in the singer's own language, when the score carried a
+   * translation. Derived from Song.lyrics on load rather than stored per card —
+   * see src/lib/translation.ts — and shown only after the singer has answered,
+   * never drilled.
+   */
+  translation?: string
   // SM-2 state
   interval: number // days until next review
   repetitions: number // number of successful consecutive reviews
@@ -44,7 +51,12 @@ export interface Song {
   title: string
   composer?: string
   voicePart?: VoicePart
-  lyrics: string // raw text, one line per card
+  /**
+   * Raw text, one line per card. Rows prefixed "> " are translations of the line
+   * above and do not become cards; go through src/lib/translation.ts rather than
+   * splitting this on newlines.
+   */
+  lyrics: string
   audioUrl?: string // object URL for uploaded audio (blob)
   audioName?: string // original filename, useful after reloads
   concertDate?: number // epoch ms
@@ -54,6 +66,8 @@ export interface Song {
   isPublic?: boolean
   isKnown?: boolean
   ownerId?: string // user_id of the song owner
+  /** ISO 639-1 code of the translation rows, when the song has any. */
+  translationLanguage?: string
 }
 
 export interface Profile {

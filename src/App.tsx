@@ -19,6 +19,8 @@ import { SongStats } from './components/SongStats'
 import { GroupDetail } from './components/GroupDetail'
 import { PracticeListDetail } from './components/PracticeListDetail'
 import { EditLyrics } from './components/EditLyrics'
+import { DevDashboard } from './components/DevDashboard'
+import { useDevDashboardRoute } from './hooks/useDevRoute'
 import { getStanzaLineRange } from './lib/stanzas'
 import { trackSongAdded, trackSongDeleted, trackLyricsEdited, trackViewChanged, trackPracticeListStudy, captureException } from './lib/analytics'
 import type { Group, PracticeList } from './types'
@@ -128,6 +130,11 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth()
+  // Hidden developer screen (#dev). Checked before auth and before loading, so
+  // a feature can be switched off even when whatever it broke is in the way.
+  const dev = useDevDashboardRoute()
+
+  if (dev.open) return <DevDashboard onClose={dev.close} />
 
   if (authLoading) {
     return (
@@ -449,7 +456,13 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
         onEditSongLine={async (songId, lineIndex, newText) => {
           const song = getSong(songId)
           if (!song) return
-          const newLines = song.cards.map((c) => ({ id: c.id, text: c.lineIndex === lineIndex ? newText : c.text }))
+          // Translations ride along with their line; leaving them out of the
+          // payload would drop them from the song's raw lyrics.
+          const newLines = song.cards.map((c) => ({
+            id: c.id,
+            text: c.lineIndex === lineIndex ? newText : c.text,
+            translation: c.translation,
+          }))
           await editSongLines(songId, newLines)
         }}
       />

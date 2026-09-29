@@ -2,14 +2,42 @@ export const config = { runtime: 'edge' }
 
 const PROMPT = `You are extracting sung lyrics from a sheet music scan.
 
-Rules:
-- Output ONLY the lyrics/text that is sung, nothing else
+Every line you output becomes one flashcard that a choir singer drills until they
+can reproduce it from memory, so the line breaks matter as much as the words.
+
+WHAT TO OUTPUT
+- Only text that is actually sung, plus translations as described below
 - Reconstruct hyphenated syllables into complete words (e.g. "Ky- ri- e" → "Kyrie")
-- One sung phrase per line, in the order they appear in the score
-- If a phrase repeats on the same system, include it only once
-- Ignore: composer names, tempo markings, dynamic markings (p, f, mf), instrument labels, bar numbers, rehearsal letters, copyright, page numbers
-- If there are multiple verses stacked under the same notes, output each verse separately, labelled "Vers 1:", "Vers 2:", etc.
-- If no lyrics are found, reply with exactly: NO_LYRICS`
+- If no lyrics are found, reply with exactly: NO_LYRICS
+
+WHERE TO BREAK LINES
+- One sung phrase per line — a phrase is what a singer takes in one breath, and
+  it is marked in the score by punctuation, a rest, or a slur ending
+- A score breaks a phrase wherever the system ends. Do NOT copy those breaks:
+  join the fragments back into the phrase they belong to
+- Equally, do not run two phrases onto one line because they share a staff
+- Aim for 3 to 10 words per line; punctuation wins over word count
+- Separate verses and sections with a blank line
+- If a phrase repeats on the same system because of a repeat sign, include it once
+
+TRANSLATIONS
+- Many scores print a translation as well as the singing text: a second language
+  under the notes, in brackets, or as its own block. It is not sung, and drilling
+  it would double the singer's work
+- Put the sung text on its own line, and the translation of that line directly
+  underneath prefixed with "> ", like this:
+      Ave verum corpus natum
+      > Hail, true body, born
+- Translate nothing yourself. Only copy a translation the score actually prints
+- When the score prints several verses of singing text under the same notes,
+  those are all sung: output each verse separately, labelled "Vers 1:", "Vers 2:",
+  and do not mark any of them as a translation
+
+IGNORE
+- Composer, arranger and poet credits, copyright and edition lines
+- Tempo and dynamic markings (p, f, mf, cresc., Andante), fermatas, D.C. al fine
+- Instrument and voice labels (Sopran:, S.A.T.B.), bar numbers, rehearsal letters,
+  page numbers, footnote markers`
 
 // btoa(String.fromCharCode(...bigArray)) overflows the call stack for large files
 function arrayBufferToBase64(buffer: ArrayBuffer): string {

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Card, Song } from '../types'
 import { Header, Shell } from './Shell'
+import { TranslationReveal } from './TranslationReveal'
+import { useFeatureFlag } from '../hooks/useFeatureFlag'
 import { buildSegments, type Segment } from '../lib/blanks'
 import { useSM2 } from '../hooks/useSM2'
 import { trackStudyStarted, trackStudyCompleted, trackStudyExited } from '../lib/analytics'
@@ -160,6 +162,7 @@ interface RoundProps {
 }
 
 function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
+  const showTranslation = useFeatureFlag('translation-reveal')
   const segments = useMemo<Segment[]>(() => buildSegments(card.text, 1), [card])
   const blanks = useMemo(() => segments.filter((s): s is { type: 'blank'; answer: string } => s.type === 'blank'), [segments])
   const correctAnswers = blanks.map((b) => b.answer)
@@ -303,6 +306,10 @@ function Round({ song, card, progress, onComplete, onExit }: RoundProps) {
           </p>
           <p className="mt-2 text-base text-text">{card.text}</p>
         </section>
+      )}
+
+      {checked && showTranslation && (
+        <TranslationReveal translation={card.translation} language={song.translationLanguage} />
       )}
 
       <div className="mt-5 flex gap-3">
