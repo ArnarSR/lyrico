@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "smoke:check-lyrics": "node --env-file-if-exists=.env scripts/check-lyrics-smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

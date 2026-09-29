@@ -8,6 +8,7 @@ import { analyticsEnabled } from './analytics'
  */
 export const FLAG_DEFAULTS = {
   'ai-lyrics-search': false,
+  'ai-lyrics-check': false,
 } as const
 
 export type FlagKey = keyof typeof FLAG_DEFAULTS

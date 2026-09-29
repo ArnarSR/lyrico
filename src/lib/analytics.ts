@@ -90,6 +90,16 @@ export function trackLyricsEdited(songId: string, lineCount: number) {
 }
 export function trackLyricsImported() { track('lyrics_imported_from_url') }
 
+// Lyrics quality check (Claude agent, see src/lib/lyricsQc.ts)
+export function trackLyricsChecked(verdict: string, issueCount: number, verified: boolean, automatic: boolean) {
+  track('lyrics_checked', { verdict, issue_count: issueCount, verified, automatic })
+}
+export function trackLyricsCheckFailed(message: string) { track('lyrics_check_failed', { message }) }
+export function trackLyricsFixesApplied(issueCount: number) { track('lyrics_fixes_applied', { issue_count: issueCount }) }
+export function trackLyricsSavedWithIssues(verdict: string, issueCount: number) {
+  track('lyrics_saved_with_issues', { verdict, issue_count: issueCount })
+}
+
 // Study sessions
 export function trackStudyStarted(songId: string, cardCount: number, source: string) {
   track('study_started', { song_id: songId, card_count: cardCount, source })

@@ -1,10 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
+import { MODEL, apiKey, cors, errorResponse, json, parseJson, runStructured } from './_claude.ts'
 
 export const config = { runtime: 'edge' }
-
-const MODEL = 'claude-opus-5'
 
 // Languages a Norwegian choir singer reads without help. Anything else gets a
 // line-by-line translation so they know what they are actually singing.
@@ -87,8 +86,8 @@ export default async function handler(request: Request): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { headers: cors })
   if (request.method !== 'POST') return json({ error: 'POST required' }, 405)
 
-  const apiKey = (process.env.ANTHROPIC_API_KEY ?? '').trim()
-  if (!apiKey) return json({ error: 'ANTHROPIC_API_KEY not configured' }, 500)
+  const key = apiKey()
+  if (!key) return json({ error: 'ANTHROPIC_API_KEY not configured' }, 500)
 
   let body: { action?: string; title?: string; composer?: string; lyrics?: string; language?: string }
   try {
@@ -97,16 +96,13 @@ export default async function handler(request: Request): Promise<Response> {
     return json({ error: 'Expected a JSON body' }, 400)
   }
 
-  const client = new Anthropic({ apiKey })
+  const client = new Anthropic({ apiKey: key })
 
   try {
     if (body.action === 'translate') return await translate(client, body)
     return await search(client, body)
   } catch (err) {
-    if (err instanceof Anthropic.APIError) {
-      return json({ error: err.message, status: err.status }, 502)
-    }
-    return json({ error: err instanceof Error ? err.message : 'Request failed' }, 502)
+    return errorResponse(err)
   }
 }
 
@@ -115,8 +111,9 @@ async function search(client: Anthropic, body: { title?: string; composer?: stri
   if (!title) return json({ error: 'title is required' }, 400)
   const composer = body.composer?.trim()
 
-  const message = await runWithSearch(client, {
+  const message = await runStructured(client, {
     system: SEARCH_SYSTEM,
+    search: true,
     prompt: composer
       ? `Find the sung text of "${title}" by ${composer}.`
       : `Find the sung text of the choral work "${title}". The composer is unknown — if several different works share this title, return them as separate versions.`,
@@ -162,75 +159,4 @@ async function translate(
   if (!parsed.ok) return json({ error: parsed.error }, 502)
 
   return json(parsed.value)
-}
-
-/**
- * Runs a request with the server-side web search tool.
- *
- * Long search turns can come back with stop_reason "pause_turn" instead of a
- * finished answer; resuming means handing the paused assistant turn straight
- * back. Without this the endpoint would return a silently truncated result.
- */
-async function runWithSearch(
-  client: Anthropic,
-  opts: { system: string; prompt: string; format: NonNullable<Anthropic.OutputConfig['format']> },
-): Promise<Anthropic.Message> {
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: opts.prompt }]
-
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const message = await client.messages.stream({
-      model: MODEL,
-      max_tokens: 16000,
-      system: opts.system,
-      thinking: { type: 'adaptive' },
-      output_config: { format: opts.format },
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }],
-      messages,
-    }).finalMessage()
-
-    if (message.stop_reason !== 'pause_turn') return message
-    messages.push({ role: 'assistant', content: message.content })
-  }
-
-  throw new Error('Search did not finish — too many paused turns')
-}
-
-function parseJson<T extends z.ZodTypeAny>(
-  message: Anthropic.Message,
-  schema: T,
-): { ok: true; value: z.infer<T> } | { ok: false; error: string } {
-  if (message.stop_reason === 'refusal') {
-    return { ok: false, error: 'The request was declined. This usually means the text is under copyright — scan the sheet music instead.' }
-  }
-
-  const text = message.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim()
-
-  if (!text) return { ok: false, error: 'No text returned' }
-
-  let raw: unknown
-  try {
-    raw = JSON.parse(text)
-  } catch {
-    return { ok: false, error: 'Response was not valid JSON' }
-  }
-
-  const result = schema.safeParse(raw)
-  if (!result.success) return { ok: false, error: `Response did not match the expected shape: ${result.error.message}` }
-  return { ok: true, value: result.data }
-}
-
-const cors = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'content-type',
-}
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json', ...cors },
-  })
 }

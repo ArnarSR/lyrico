@@ -3,7 +3,16 @@ import type { VoicePart } from '../types'
 import { VOICE_PARTS } from '../types'
 import type { NewSongInput } from '../hooks/useStorage'
 import { isSectionLabel } from '../lib/stanzas'
-import { trackLyricsImported } from '../lib/analytics'
+import {
+  trackLyricsCheckFailed,
+  trackLyricsChecked,
+  trackLyricsFixesApplied,
+  trackLyricsImported,
+  trackLyricsSavedWithIssues,
+} from '../lib/analytics'
+import { checkLyrics, needsAttention, type LyricsOrigin, type LyricsReview } from '../lib/lyricsQc'
+import { useFeatureFlag } from '../hooks/useFeatureFlag'
+import { LyricsCheckPanel } from './LyricsCheckPanel'
 import { Header, Shell } from './Shell'
 
 const DRAFT_KEY = 'lyrico_add_song_draft'
@@ -71,12 +80,61 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   const [ocrError, setOcrError] = useState<string | null>(null)
   const ocrInputRef = useRef<HTMLInputElement>(null)
 
+  // Claude quality check — see src/lib/lyricsQc.ts and api/check-lyrics.ts
+  const checkEnabled = useFeatureFlag('ai-lyrics-check')
+  const [review, setReview] = useState<LyricsReview | null>(null)
+  const [checkMode, setCheckMode] = useState<'quick' | 'verify' | null>(null)
+  const [checkError, setCheckError] = useState<string | null>(null)
+  const [reviewHidden, setReviewHidden] = useState(false)
+  const [checkNotice, setCheckNotice] = useState<string | null>(null)
+  const checking = checkMode !== null
+  const reviewStale = !!review && review.checkedLyrics !== lyrics.replace(/\r\n/g, '\n')
+
   const lineCount = lyrics
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && !isSectionLabel(l)).length
 
   const canSave = title.trim().length > 0 && lineCount > 0
+  // The check has already run and flagged something: the next press saves anyway.
+  const saveLabel = review && !reviewStale && needsAttention(review) ? 'Save anyway' : 'Save song'
+
+  /**
+   * Runs the check and returns the review, or null when it could not run. An
+   * outage must never block a save, so failures are surfaced and swallowed.
+   */
+  async function runCheck(
+    opts: { verify?: boolean; automatic: boolean; origin?: LyricsOrigin; sourceUrl?: string; text?: string },
+  ): Promise<LyricsReview | null> {
+    const verify = opts.verify === true
+    // The text is passed in when the check follows an import, because the state
+    // update that holds it has not been applied yet.
+    const text = opts.text ?? lyrics
+    setCheckMode(verify ? 'verify' : 'quick')
+    setCheckError(null)
+    setCheckNotice(null)
+    setReviewHidden(false)
+    try {
+      const result = await checkLyrics({
+        title: title.trim(),
+        composer: composer.trim() || undefined,
+        lyrics: text,
+        verify,
+        origin: opts.origin ?? 'typed',
+        sourceUrl: opts.sourceUrl,
+      })
+      setReview(result)
+      trackLyricsChecked(result.verdict, result.issues.length, result.verified, opts.automatic)
+      return result
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'The check failed'
+      setCheckError(message)
+      trackLyricsCheckFailed(message)
+      return null
+    } finally {
+      setCheckMode(null)
+    }
+  }
 
   function onAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -96,8 +154,10 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
       const { lyrics: text, error } = await res.json() as { lyrics?: string; error?: string }
       if (error || !text) throw new Error(error ?? 'No text returned')
       setLyrics(text)
+      const url = importUrl.trim()
       setImportUrl('')
       trackLyricsImported()
+      if (checkEnabled) void runCheck({ automatic: true, origin: 'url', sourceUrl: url, text })
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Import failed')
     } finally {
@@ -124,6 +184,7 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
       setLyrics(data.lyrics ?? '')
       setOcrFile(null)
       if (ocrInputRef.current) ocrInputRef.current.value = ''
+      if (checkEnabled && data.lyrics) void runCheck({ automatic: true, origin: 'ocr', text: data.lyrics })
     } catch (err) {
       setOcrError(err instanceof Error ? err.message : 'Extraction failed')
     } finally {
@@ -131,9 +192,25 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!canSave) return
+    if (!canSave || checking) return
+
+    // First save of text that has not been checked: check it, and stop here if
+    // the singer should look at something. A second press saves regardless.
+    let current = review && !reviewStale ? review : null
+    if (checkEnabled && !current) {
+      current = await runCheck({ automatic: true })
+      if (current && needsAttention(current)) return
+    }
+    if (current && needsAttention(current)) {
+      trackLyricsSavedWithIssues(current.verdict, current.issues.length)
+    }
+
+    save()
+  }
+
+  function save() {
     clearDraft()
     onSave({
       title: title.trim(),
@@ -264,6 +341,50 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
             {ocrError && <p className="mt-1 text-xs text-wrong">{ocrError}</p>}
           </div>
 
+          {/* Claude quality check */}
+          {checkEnabled && (
+            <>
+              <div className="mb-2 flex gap-2">
+                <button
+                  type="button"
+                  disabled={lineCount === 0 || checking}
+                  onClick={() => void runCheck({ automatic: false })}
+                  className="flex-1 rounded-xl border border-border bg-bg-soft px-3 py-2 text-sm text-text-dim hover:border-accent-soft hover:text-text disabled:opacity-40"
+                >
+                  {checkMode === 'quick' ? 'Checking…' : 'Quality check'}
+                </button>
+                <button
+                  type="button"
+                  disabled={lineCount === 0 || checking}
+                  onClick={() => void runCheck({ verify: true, automatic: false })}
+                  className="flex-1 rounded-xl border border-border bg-bg-soft px-3 py-2 text-sm text-text-dim hover:border-accent-soft hover:text-text disabled:opacity-40"
+                  title="Searches the web and compares your text against real sources. Slower."
+                >
+                  {checkMode === 'verify' ? 'Searching…' : 'Check against sources'}
+                </button>
+              </div>
+              {checkError && <p className="mb-1 text-xs text-wrong">{checkError}</p>}
+              {checkNotice && <p className="mb-1 text-xs text-correct">{checkNotice}</p>}
+              {review && !reviewHidden && (
+                <LyricsCheckPanel
+                  review={review}
+                  stale={reviewStale}
+                  onApplyFixes={(cleaned) => {
+                    setLyrics(cleaned)
+                    trackLyricsFixesApplied(review.issues.length)
+                    // The text is no longer the one that was reviewed; drop the
+                    // report rather than leave stale line numbers on screen.
+                    setReview(null)
+                    setCheckNotice('Fixes applied — check again to confirm.')
+                  }}
+                  onApplyTitle={setTitle}
+                  onApplyComposer={setComposer}
+                  onDismiss={() => setReviewHidden(true)}
+                />
+              )}
+            </>
+          )}
+
           <textarea
             ref={lyricsRef}
             value={lyrics}
@@ -314,10 +435,10 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
           </button>
           <button
             type="submit"
-            disabled={!canSave}
+            disabled={!canSave || checking}
             className="flex-[2] rounded-full border border-accent bg-accent/15 py-3 text-accent hover:bg-accent/25 disabled:opacity-40"
           >
-            Save song
+            {checking ? 'Checking lyrics…' : saveLabel}
           </button>
         </div>
       </form>
