@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
-import { apiKey, cors, errorResponse, json, parseJson, runStructured } from '../lib/claude.ts'
+import { apiKey, cors, errorResponse, json, parseJson, runStructured } from '../lib/claude'
 
 export const config = { runtime: 'edge' }
 
