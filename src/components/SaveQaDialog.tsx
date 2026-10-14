@@ -43,7 +43,7 @@ export function SaveQaDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Check before saving"
-        className="max-h-[92dvh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl border border-border bg-bg px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 sm:rounded-3xl"
+        className="max-h-[92dvh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl border border-border bg-bg px-5 pb-[var(--pad-bottom-sheet)] pt-5 sm:rounded-3xl"
       >
         <h2 className="text-xl text-accent">Before saving</h2>
         <p className="mt-0.5 text-sm text-text-dim">

@@ -20,7 +20,7 @@ export function CelebrationToast({ icon, title, subtitle, onDismiss, durationMs 
   }, [durationMs, onDismiss])
 
   return createPortal((
-    <div className="pointer-events-none fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[200] flex justify-center">
+    <div className="pointer-events-none fixed inset-x-4 top-[var(--pad-top-overlay)] z-[200] flex justify-center">
       <div
         className="pointer-events-auto flex max-w-md items-center gap-4 rounded-2xl border border-accent bg-bg-soft px-5 py-4 shadow-2xl"
         style={{ animation: 'lyrico-celebrate 0.6s ease-out' }}

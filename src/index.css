@@ -16,6 +16,28 @@
     Georgia, 'Times New Roman', 'Iowan Old Style', 'Palatino Linotype', serif;
 }
 
+/*
+ * Safe-area padding.
+ *
+ * In standalone (PWA) mode the viewport runs edge to edge under
+ * `viewport-fit=cover`, so the status bar and the Dynamic Island sit on top of
+ * the page. `max(1rem, env(safe-area-inset-top))` is the trap: on a notched
+ * phone the inset wins outright and the content ends up flush against the
+ * island with no padding at all. Always add the padding *on top of* the inset.
+ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Top of a screen: clears the status bar, then breathes. */
+  --pad-top: calc(env(safe-area-inset-top, 0px) + 1.25rem);
+  /* Floating overlays pinned to the top (toasts). */
+  --pad-top-overlay: calc(env(safe-area-inset-top, 0px) + 1rem);
+  /* Bottom nav and sheets: clears the home indicator, then breathes. */
+  --pad-bottom-nav: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  --pad-bottom-sheet: calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+}
+
 html,
 body,
 #root {
@@ -52,6 +74,17 @@ input:focus,
 textarea:focus,
 select:focus {
   outline: none;
+}
+
+/*
+ * WebKit draws its own clear button inside `input[type="search"]`, which would
+ * sit next to the app's styled one. Keep ours — it is in the app's own idiom
+ * and, unlike the native button, it is there on touch as well as on a mouse.
+ */
+input[type='search']::-webkit-search-cancel-button,
+input[type='search']::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 @keyframes lyrico-shimmer {

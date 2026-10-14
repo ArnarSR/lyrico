@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { LyricReport, PracticeList, Song, SongInList, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
-import { Header, Shell } from './Shell'
+import { Header, SearchField, Shell } from './Shell'
 import { formatDateInput, parseDateInput } from '../lib/dates'
+import { searchSongs } from '../lib/search'
 
 interface PracticeListDetailProps {
   list: PracticeList
@@ -72,14 +73,10 @@ export function PracticeListDetail({
     return owned.reduce((worst, s) => masteryPercent(s) < masteryPercent(worst) ? s : worst)
   }, [songsWithMastery, mySongIds])
 
-  const pickableSongs = useMemo(() => {
-    const q = search.toLowerCase()
-    return mySongs.filter(
-      (s) => !listSongIds.has(s.id) && (
-        !q || s.title.toLowerCase().includes(q) || (s.composer ?? '').toLowerCase().includes(q)
-      ),
-    )
-  }, [mySongs, listSongIds, search])
+  const pickableSongs = useMemo(
+    () => searchSongs(mySongs.filter((s) => !listSongIds.has(s.id)), search),
+    [mySongs, listSongIds, search],
+  )
 
   async function handleAdd(song: Song) {
     setAdding((prev) => new Set(prev).add(song.id))
@@ -284,14 +281,15 @@ export function PracticeListDetail({
       {/* Song picker */}
       {showPicker && (
         <div className="mb-5 rounded-2xl border border-border bg-bg-soft p-3">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search your songs…"
-            autoFocus
-            className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
-          />
+          <div className="mb-2">
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder="Title, composer or a line…"
+              label="Search your songs"
+              autoFocus
+            />
+          </div>
           {pickableSongs.length === 0 ? (
             <p className="py-4 text-center text-sm text-text-dim">
               {search ? 'No matches' : 'All your songs are already in this list'}

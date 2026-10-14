@@ -89,6 +89,10 @@ export function trackLyricsEdited(songId: string, lineCount: number) {
   track('lyrics_edited', { song_id: songId, line_count: lineCount })
 }
 export function trackLyricsImported() { track('lyrics_imported_from_url') }
+export function trackBatchStarted(source: 'lookup' | 'scan', count: number) {
+  track('batch_import_started', { source, count })
+}
+export function trackBatchImported(count: number) { track('batch_import_saved', { count }) }
 
 // Lyrics quality check (Claude agent, see src/lib/lyricsQc.ts)
 export function trackLyricsChecked(verdict: string, issueCount: number, verified: boolean, automatic: boolean) {

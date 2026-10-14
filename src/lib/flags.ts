@@ -13,6 +13,7 @@ import { analyticsEnabled } from './analytics'
 export const FLAG_DEFAULTS = {
   'ai-lyrics-search': false,
   'ai-lyrics-check': false,
+  'batch-import': false,
   'smart-line-detection': true,
   'word-line-tools': true,
   'line-split': true,
@@ -47,6 +48,12 @@ export const FLAG_META: Record<FlagKey, FlagMeta> = {
     area: 'New song',
     description:
       'Claude reads the pasted text before it is saved and reports what would go wrong in rehearsal. Costs a round trip.',
+  },
+  'batch-import': {
+    label: 'Add several songs at once',
+    area: 'New song',
+    description:
+      'Look a list of songs up by name, or read a stack of scanned scores, and grade each result before importing. Several web-searching model calls per run.',
   },
   'smart-line-detection': {
     label: 'Smart line detection',

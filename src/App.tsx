@@ -11,6 +11,7 @@ import { CelebrationToast } from './components/CelebrationToast'
 import { Onboarding } from './components/Onboarding'
 import { SongLibrary } from './components/SongLibrary'
 import { AddSong } from './components/AddSong'
+import { BatchImport } from './components/BatchImport'
 import { StudySession } from './components/StudySession'
 import { StanzaSession } from './components/StanzaSession'
 import { TestSession } from './components/TestSession'
@@ -22,12 +23,13 @@ import { EditLyrics } from './components/EditLyrics'
 import { DevDashboard } from './components/DevDashboard'
 import { useDevDashboardRoute } from './hooks/useDevRoute'
 import { getStanzaLineRange } from './lib/stanzas'
-import { trackSongAdded, trackSongDeleted, trackLyricsEdited, trackViewChanged, trackPracticeListStudy, captureException } from './lib/analytics'
+import { trackSongAdded, trackSongDeleted, trackLyricsEdited, trackViewChanged, trackPracticeListStudy, trackBatchImported, captureException } from './lib/analytics'
 import type { Group, PracticeList } from './types'
 
 type View =
   | { name: 'library' }
   | { name: 'add' }
+  | { name: 'batch' }
   | { name: 'stats'; songId: string; returnTo?: View }
   | { name: 'study'; songId: string; stanzaIdx?: number; returnTo?: View }
   | { name: 'stanza'; songId: string }
@@ -47,12 +49,12 @@ const NAV_ITEMS: { id: NavTab; label: string }[] = [
   { id: 'groups', label: 'Groups' },
 ]
 
-const HIDE_NAV: View['name'][] = ['study', 'stanza', 'test', 'wordbank', 'add', 'edit-lyrics']
+const HIDE_NAV: View['name'][] = ['study', 'stanza', 'test', 'wordbank', 'add', 'batch', 'edit-lyrics']
 
 function BottomNav({ active, onChange }: { active: NavTab; onChange: (tab: NavTab) => void }) {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center">
-      <div className="w-full max-w-[560px] border-t border-border bg-bg/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+      <div className="w-full max-w-[560px] border-t border-border bg-bg/95 pb-[var(--pad-bottom-nav)] backdrop-blur-sm">
         <div className="flex">
           {NAV_ITEMS.map(({ id, label }) => (
             <button
@@ -241,10 +243,33 @@ function AppInner({ userId, userEmail, onSignOut }: { userId: string; userEmail:
       <>
         <AddSong
           onCancel={() => setView({ name: 'library' })}
+          onBatch={() => setView({ name: 'batch' })}
           onSave={(input) => {
             const song = addSong(input)
             trackSongAdded(song.id, song.cards.length, !!input.audioUrl, !!input.isPublic)
             setView({ name: 'stats', songId: song.id })
+          }}
+        />
+        {celebration}
+      </>
+    )
+  }
+
+  if (view.name === 'batch') {
+    return (
+      <>
+        <BatchImport
+          existingTitles={songs.map((s) => s.title)}
+          onCancel={() => setView({ name: 'library' })}
+          onImport={(inputs) => {
+            // Written one at a time: addSong queues its own Supabase writes, and
+            // a song row has to land before its cards do.
+            for (const input of inputs) {
+              const song = addSong(input)
+              trackSongAdded(song.id, song.cards.length, false, false)
+            }
+            trackBatchImported(inputs.length)
+            setView({ name: 'library' })
           }}
         />
         {celebration}

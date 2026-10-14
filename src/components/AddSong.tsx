@@ -52,9 +52,11 @@ function clearDraft() {
 interface AddSongProps {
   onCancel: () => void
   onSave: (input: NewSongInput) => void
+  /** Opens the batch screen. Only offered when the batch-import flag is on. */
+  onBatch?: () => void
 }
 
-export function AddSong({ onCancel, onSave }: AddSongProps) {
+export function AddSong({ onCancel, onSave, onBatch }: AddSongProps) {
   const draft = loadDraft()
   const [title, setTitle] = useState(draft?.title ?? '')
   const [composer, setComposer] = useState(draft?.composer ?? '')
@@ -94,6 +96,8 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
   // Set after a detection pass so the singer can put the raw text back.
   const [prepared, setPrepared] = useState<{ previous: string; summary: string } | null>(null)
   const [qaOpen, setQaOpen] = useState(false)
+
+  const batchEnabled = useFeatureFlag('batch-import')
 
   // Claude quality check — see src/lib/lyricsQc.ts and api/check-lyrics.ts
   const checkEnabled = useFeatureFlag('ai-lyrics-check')
@@ -316,6 +320,22 @@ export function AddSong({ onCancel, onSave }: AddSongProps) {
           </button>
         }
       />
+
+      {batchEnabled && onBatch && (
+        <button
+          type="button"
+          onClick={onBatch}
+          className="mb-4 flex w-full items-center justify-between rounded-xl border border-border bg-bg-soft px-4 py-3 text-left hover:border-accent/50"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm text-text">Add several songs at once</span>
+            <span className="mt-0.5 block text-xs text-text-dim">
+              Paste a list of titles, or pick a stack of scanned scores
+            </span>
+          </span>
+          <span className="ml-3 shrink-0 text-accent">→</span>
+        </button>
+      )}
 
       {showRestoredBanner && (
         <div className="mb-4 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm text-accent">

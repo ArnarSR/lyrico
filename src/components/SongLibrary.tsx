@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Group, PendingApproval, PracticeList, Song, SongInList, UserList, UserListType } from '../types'
 import { masteryPercent } from '../hooks/useSM2'
 import { useNow } from '../hooks/useNow'
-import { Header, IconButton, Shell } from './Shell'
+import { Header, IconButton, SearchField, Shell } from './Shell'
 import { CreateListForm } from './CreateListForm'
 import { formatDateInput, parseDateInput } from '../lib/dates'
+import { searchSongs, searchSongsDetailed, searchTerms } from '../lib/search'
 import { GroupsTab } from './GroupsTab'
 import { FeedbackModal } from './FeedbackModal'
 import { StudyStatsBanner } from './StudyStatsBanner'
@@ -106,7 +107,7 @@ export function SongLibrary({
         title="Lyrico"
         subtitle="Learn your lyrics by heart"
         right={
-          <div className="flex items-center gap-1">
+          <>
             {(tab === 'practice' || tab === 'mine') && (
               <IconButton label="Add song" onClick={onAdd}>
                 <PlusIcon />
@@ -123,7 +124,7 @@ export function SongLibrary({
             >
               {profileInitial}
             </button>
-          </div>
+          </>
         }
       />
 
@@ -809,8 +810,7 @@ function ListsTab({
 
   function getPickableSongs(listId: string): Song[] {
     const ids = listSongIds.get(listId) ?? new Set<string>()
-    const q = addSearch.toLowerCase()
-    return songs.filter((s) => !ids.has(s.id) && (!q || s.title.toLowerCase().includes(q) || (s.composer ?? '').toLowerCase().includes(q)))
+    return searchSongs(songs.filter((s) => !ids.has(s.id)), addSearch)
   }
 
   const concertLists = userLists.filter((l) => l.listType === 'concert')
@@ -940,14 +940,15 @@ function ListsTab({
             {/* Add songs */}
             {isAddingTo ? (
               <div className="border-t border-border/40 p-3">
-                <input
-                  type="search"
-                  value={addSearch}
-                  onChange={(e) => setAddSearch(e.target.value)}
-                  placeholder="Search your songs…"
-                  autoFocus
-                  className="mb-2 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-dim/60 focus:border-accent"
-                />
+                <div className="mb-2">
+                  <SearchField
+                    value={addSearch}
+                    onChange={setAddSearch}
+                    placeholder="Title, composer or a line…"
+                    label="Search your songs"
+                    autoFocus
+                  />
+                </div>
                 {getPickableSongs(list.id).length === 0 ? (
                   <p className="py-2 text-center text-sm text-text-dim">{addSearch ? 'No matches' : 'All songs already in this list'}</p>
                 ) : (
@@ -1073,18 +1074,55 @@ interface MySongsTabProps {
   onTogglePublic: (id: string) => void
 }
 
+/**
+ * Below this many songs the list is short enough to read at a glance, and a
+ * permanent search box would be furniture. Above it, scrolling starts to cost.
+ */
+const SEARCH_THRESHOLD = 5
+
 function MySongsTab({ songs, now, onOpen, onStudy, onAdd, onTogglePublic }: MySongsTabProps) {
+  const [query, setQuery] = useState('')
+  const matches = useMemo(() => searchSongsDetailed(songs, query), [songs, query])
+  const searching = searchTerms(query).length > 0
+  const showSearch = songs.length >= SEARCH_THRESHOLD
+
+  if (songs.length === 0) return <EmptyState onAdd={onAdd} />
+
   return (
-    <div>
-      {songs.length === 0 ? (
-        <EmptyState onAdd={onAdd} />
+    <div className="flex flex-col gap-3">
+      {showSearch && (
+        <>
+          <SearchField value={query} onChange={setQuery} />
+          {searching && (
+            <p className="px-1 text-xs text-text-dim/60">
+              {matches.length === 0
+                ? 'No matches'
+                : `${matches.length} of ${songs.length} song${songs.length !== 1 ? 's' : ''}`}
+            </p>
+          )}
+        </>
+      )}
+
+      {searching && matches.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-bg-soft p-8 text-center">
+          <p className="text-text">Nothing matched “{query.trim()}”</p>
+          <p className="mt-2 text-sm text-text-dim">
+            Search looks at titles, composers, voice parts and the lines themselves.
+          </p>
+          <button type="button" onClick={() => setQuery('')} className="mt-4 text-sm text-accent hover:brightness-110">
+            Clear search
+          </button>
+        </div>
       ) : (
         <ul className="flex flex-col gap-3">
-          {songs.map((song) => (
+          {matches.map(({ song, matchedIn }) => (
             <li key={song.id}>
               <SongRow
                 song={song}
                 now={now}
+                // Only worth saying when the hit is somewhere the row does not
+                // already show — otherwise the singer can see why it matched.
+                matchNote={searching && matchedIn.length === 1 && matchedIn[0] === 'lyrics' ? 'Matched in the lyrics' : undefined}
                 onOpen={() => onOpen(song.id)}
                 onStudy={() => onStudy(song.id)}
                 onTogglePublic={() => onTogglePublic(song.id)}
@@ -1099,7 +1137,7 @@ function MySongsTab({ songs, now, onOpen, onStudy, onAdd, onTogglePublic }: MySo
 
 // ── Song row ──────────────────────────────────────────────────────────────────
 
-function SongRow({ song, now, onStudy, onTogglePublic }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onTogglePublic: () => void }) {
+function SongRow({ song, now, onStudy, onTogglePublic, matchNote }: { song: Song; now: number; onOpen: () => void; onStudy: () => void; onTogglePublic: () => void; matchNote?: string }) {
   const mastery = masteryPercent(song)
   const concertDays = song.concertDate ? daysUntil(song.concertDate, now) : null
   const concertUrgent = concertDays !== null && concertDays <= 7
@@ -1124,7 +1162,10 @@ function SongRow({ song, now, onStudy, onTogglePublic }: { song: Song; now: numb
           </div>
           <span className={`shrink-0 text-xs ${stageColor(mastery)}`}>{stageLabel(mastery)}</span>
         </div>
-        <p className="mt-1.5 text-xs text-text-dim/50">Last practiced {formatRelative(now, song.lastStudied)}</p>
+        <p className="mt-1.5 text-xs text-text-dim/50">
+          Last practiced {formatRelative(now, song.lastStudied)}
+          {matchNote && <span className="text-accent/70"> · {matchNote}</span>}
+        </p>
       </button>
       <button
         type="button"
