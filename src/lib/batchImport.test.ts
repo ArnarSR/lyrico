@@ -115,12 +115,25 @@ describe('parseBatchList', () => {
   })
 
   it('strips list bullets and numbering', () => {
-    const jobs = parseBatchList('- Gamle Norge\n* Ett glass\n1. Ave verum\n2) Deilig er jorden')
+    const jobs = parseBatchList('- Gamle Norge\n* Ett glass\n1. Ave verum\n2) Deilig er jorden\n• Sommarpsalm')
     expect(jobs.map((j) => j.title)).toEqual([
       'Gamle Norge',
       'Ett glass',
       'Ave verum',
       'Deilig er jorden',
+      'Sommarpsalm',
+    ])
+  })
+
+  it('keeps a number that is part of the title', () => {
+    // Choral repertoire is full of these; stripping the number silently
+    // searches for a different work.
+    const jobs = parseBatchList('9 Lessons and Carols\n4 Last Songs\n1000 years\n5th Symphony')
+    expect(jobs.map((j) => j.title)).toEqual([
+      '9 Lessons and Carols',
+      '4 Last Songs',
+      '1000 years',
+      '5th Symphony',
     ])
   })
 
@@ -208,10 +221,13 @@ describe('gradeOutcome', () => {
     expect(q.reasons).toContain('Likely still under copyright')
   })
 
-  it('says so when the quality check never ran', () => {
-    const q = gradeOutcome({ lineCount: 10, confidence: 'high', alternatives: 0, review: null, reviewFailed: true })
+  it('never calls unvetted text Ready, however good the other signals are', () => {
+    const q = gradeOutcome({
+      lineCount: 20, confidence: 'high', copyrightStatus: 'public_domain',
+      alternatives: 0, review: null, reviewFailed: true,
+    })
     expect(q.reasons).toContain('Quality check could not run')
-    expect(q.grade).toBe('ready')
+    expect(q.grade).toBe('review')
   })
 
   it('penalises a text with almost no lines', () => {
@@ -278,6 +294,26 @@ describe('runJob', () => {
     expect(finished.outcome?.quality.reasons).toContain('Quality check could not run')
   })
 
+  it('leaves a search result\u2019s line breaks alone', async () => {
+    // find-lyrics already returns one sung line per row. Unpunctuated Latin is
+    // the case where re-running phrase detection merges correct lines.
+    const clean = 'Ave verum corpus natum\nde Maria Virgine\nvere passum immolatum\nin cruce pro homine'
+    const d = deps({ findLyrics: vi.fn(async () => searchResult({ versions: [version({ lyrics: clean })] })) })
+    const finished = await runJob(lookupJob(), { deps: d })
+
+    expect(finished.outcome?.lyrics).toBe(clean)
+    expect(finished.outcome?.lineCount).toBe(4)
+  })
+
+  it('reads a search result as clean text, not as scraped HTML', async () => {
+    const d = deps()
+    await runJob(lookupJob(), { deps: d })
+    expect(d.checkLyrics).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: 'typed' }),
+      expect.anything(),
+    )
+  })
+
   it('runs a scan through OCR and rejoins the split syllables', async () => {
     const file = new File(['x'], 'kyrie.png', { type: 'image/png' })
     const finished = await runJob(
@@ -287,6 +323,16 @@ describe('runJob', () => {
     expect(finished.stage).toBe('done')
     expect(finished.outcome?.lyrics).not.toMatch(/Ky- ri- e/)
     expect(finished.outcome?.lyrics).toMatch(/Kyrie/)
+  })
+
+  it('reads a scan as a scan', async () => {
+    const file = new File(['x'], 'kyrie.png', { type: 'image/png' })
+    const d = deps()
+    await runJob({ ...lookupJob(), source: 'scan', file, label: 'kyrie.png' }, { deps: d })
+    expect(d.checkLyrics).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: 'ocr' }),
+      expect.anything(),
+    )
   })
 
   it('prefers the title the quality check establishes over a filename', async () => {

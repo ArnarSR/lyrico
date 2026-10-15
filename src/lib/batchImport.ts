@@ -97,6 +97,16 @@ export interface BatchJob {
 const COMPOSER_SPLIT = /\s+(?:[-–—|]|by|av)\s+/i
 
 /**
+ * A bullet or a numbered-list marker pasted in along with the titles.
+ *
+ * The digits must be followed by "." or ")" — choral repertoire is full of
+ * titles that legitimately begin with a number ("9 Lessons and Carols",
+ * "4 Last Songs", "1000 years"), and stripping the number off those searches
+ * for the wrong work without ever saying so.
+ */
+const LIST_MARKER = /^(?:[-*•–—]|\d{1,2}[.)])\s+/
+
+/**
  * Turns a pasted block of song names into jobs. One song per line; a composer
  * may follow the title after a dash, a pipe, "by" or "av". Blank lines and
  * lines starting with # are skipped, and a title that appears twice is only
@@ -107,7 +117,7 @@ export function parseBatchList(text: string): BatchJob[] {
   const jobs: BatchJob[] = []
 
   for (const raw of text.split('\n')) {
-    const line = raw.trim().replace(/^[-*•\d.)\s]+(?=\p{L})/u, '')
+    const line = raw.trim().replace(LIST_MARKER, '')
     if (!line || line.startsWith('#')) continue
 
     const [titlePart, ...rest] = line.split(COMPOSER_SPLIT)
@@ -252,7 +262,12 @@ export function gradeOutcome(input: GradeInput): BatchQuality {
   // "poor" is reserved for results there is no point opening: nothing to
   // drill, or so many blockers that re-fetching beats fixing. Anything a
   // singer could still salvage by looking at it belongs in "review".
-  const grade: BatchGrade = score >= 80 ? 'ready' : score >= 35 ? 'review' : 'poor'
+  let grade: BatchGrade = score >= 80 ? 'ready' : score >= 35 ? 'review' : 'poor'
+
+  // "Ready" means the text has been looked at and is clean. When the quality
+  // check never ran, nothing has looked at it — whatever the other signals
+  // say, that is a text to open, not one to import unseen.
+  if (input.reviewFailed && grade === 'ready') grade = 'review'
 
   if (reasons.length === 0) reasons.push('Clean')
   return { grade, score, reasons }
@@ -326,10 +341,17 @@ export async function runJob(
 
     if (signal?.aborted) return { ...job, stage: 'cancelled' }
 
-    // Same phrase and translation detection the New-song screen runs, so a
-    // batch-imported song is laid out exactly like a hand-added one.
-    const prepared = prepareLyrics(raw)
-    const lyrics = prepared.lyrics
+    // Phrase and translation detection, but only where the text needs it.
+    //
+    // A scan arrives with syllables split across hyphens and phrases broken at
+    // every system end, which is exactly what prepareLyrics was built for. A
+    // search result does not: api/find-lyrics already returns one sung line per
+    // row with the syllables rejoined. Running the detector over it merges
+    // lines that are correctly separate — unpunctuated liturgical Latin is the
+    // common case, where four sung phrases collapse into one ten-word
+    // flashcard the singer cannot possibly recall as a unit.
+    const prepared = job.source === 'scan' ? prepareLyrics(raw) : null
+    const lyrics = prepared ? prepared.lyrics : raw
     const lineCount = cardLineCount(lyrics)
 
     stage('checking')
@@ -342,7 +364,12 @@ export async function runJob(
           title,
           composer: composer || undefined,
           lyrics,
-          origin: job.source === 'scan' ? 'ocr' : 'url',
+          // Not 'url': that guidance describes api/fetch-lyrics, a blunt
+          // HTML-to-text pass whose output is half page furniture, and it
+          // pushes the reviewer to flag real lyric lines as navigation.
+          // A find-lyrics result is clean prose from a source, so it is read
+          // the way hand-entered text is.
+          origin: job.source === 'scan' ? 'ocr' : 'typed',
           sourceUrl: version?.sourceUrl,
         },
         { signal },
@@ -388,7 +415,7 @@ export async function runJob(
         alternatives,
         conflictSummary: search?.conflictSummary ?? '',
         notes: search?.notes ?? '',
-        prepareSummary: prepared.changed ? describePrepare(prepared) : '',
+        prepareSummary: prepared?.changed ? describePrepare(prepared) : '',
         review,
         quality,
       },

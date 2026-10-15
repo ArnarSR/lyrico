@@ -42,6 +42,9 @@ export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessio
   const [queue, setQueue] = useState<Card[]>(() => shuffle(allCards.slice(0, MAX_EXERCISES)))
   // Index into allCards for the next wave
   const [waveStart, setWaveStart] = useState(MAX_EXERCISES)
+  // How many distinct cards this wave holds. The last wave is usually short,
+  // so this cannot be derived from MAX_EXERCISES alone.
+  const [waveSize, setWaveSize] = useState(() => Math.min(MAX_EXERCISES, allCards.length))
   // Cards that have already been retried once — don't re-queue them again
   const [retried, setRetried] = useState<Set<string>>(new Set())
   const [reviewedCount, setReviewedCount] = useState(0)
@@ -102,14 +105,16 @@ export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessio
             {hasMoreWaves ? 'Wave complete!' : 'All lines done!'}
           </p>
           <p className="text-sm text-text-dim">
-            {reviewedCount} line{reviewedCount !== 1 ? 's' : ''} reviewed this wave.
+            {waveSize} line{waveSize !== 1 ? 's' : ''} reviewed this wave.
           </p>
           {hasMoreWaves ? (
             <div className="mt-2 flex flex-col gap-2 w-full max-w-xs">
               <button
                 type="button"
                 onClick={() => {
-                  setQueue(shuffle(allCards.slice(waveStart, waveStart + MAX_EXERCISES)))
+                  const next = allCards.slice(waveStart, waveStart + MAX_EXERCISES)
+                  setQueue(shuffle(next))
+                  setWaveSize(next.length)
                   setWaveStart((n) => n + MAX_EXERCISES)
                   setRetried(new Set())
                 }}
@@ -146,7 +151,12 @@ export function WordBankSession({ song, onExit, onCardReviewed }: WordBankSessio
       card={current}
       onComplete={handleComplete}
       onExit={handleExit}
-      progress={{ done: reviewedCount, waveSize: Math.min(MAX_EXERCISES, allCards.length) }}
+      // Cards cleared out of the queue — NOT reviewedCount, which counts every
+      // answer given. A wrong answer puts the card back on the queue for one
+      // retry, and reviewedCount also runs across waves, so using it showed
+      // nonsense like "19 of 10". Queue length moves only when a card is done
+      // with, so this both ignores retries and resets itself each wave.
+      progress={{ done: waveSize - queue.length, waveSize }}
     />
   )
 }
